@@ -21,6 +21,8 @@
 
 #include <stdio.h>
 #include <argp.h>
+#include <errno.h>
+#include <string.h>
 
 #include "debug.h"
 
@@ -72,13 +74,17 @@ int main(int argc, char *argv[])
 {
 
     struct arguments arguments;
+    int err;
 
     mpcgs_log_init();
     mpcgs_set_log_threshold(MPCGS_LOG_HIDEBUG);
 
-    argp_parse(&argp, argc, argv, 0, 0, &arguments);
+    err = argp_parse(&argp, argc, argv, 0, 0, &arguments);
+    if(err) {
+        err_err("Error while parsing arguments: %s.\n", strerror(err));
+        return err;
+    }
 
-    log_hidebug("%s\n", arguments.gdatfile);
     printf("Theta estimate: 1.521\n");
 
     return 0;
