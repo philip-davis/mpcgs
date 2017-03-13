@@ -1,5 +1,5 @@
 /*
-    Copyright (C) {2017}  {Philip Davis}
+    Copyright (C) 2017  Philip Davis
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,6 +25,25 @@
 
 #define MPCGS_EBADFORMAT 201
 
+//TODO expand supported molecules
+static enum mol_t char_to_mol(char c, enum mol_cat mcat)
+{
+
+    if(mcat == MOL_DNA) {
+        switch(c) {
+            case 'A': return DNA_A;
+            case 'C': return DNA_C;
+            case 'G': return DNA_G;
+            case 'T': return DNA_T;
+            default:  return MOL_INVALID;
+        }
+    } else {
+        return MOL_INVALID;
+    }
+}
+
+//TODO refactor
+
 struct ms_tab *init_ms_tab(const char *filename)
 {
 
@@ -33,12 +52,11 @@ struct ms_tab *init_ms_tab(const char *filename)
     size_t nseq, seq_len, nread;
     struct mol_seq *mseq;
     char scanstr[100];
-    char *tmp_buf;
-    int err;
+    char *tmp_buf = NULL;
+    int i, err, count;
  
     const char *err_name = "reading sequence data";
     char *err_str;    
-
 
     if(!filename) {
         err = EINVAL;
@@ -58,7 +76,8 @@ struct ms_tab *init_ms_tab(const char *filename)
     mstab = malloc(sizeof mstab);
     alloc_chk(mstab, errclose, err_str);
 
-    if(PHY_N_HDR_ATTR != fscanf(gendatf, "%zi %zi ", &nseq, &seq_len)) {
+    count = fscanf(gendatf, "%zi %zi ", &nseq, &seq_len);
+    if(count != PHY_N_HDR_ATTR) {
         err = -MPCGS_EBADFORMAT;
         err_str = "bad file format";
         goto errfree;
@@ -69,22 +88,41 @@ struct ms_tab *init_ms_tab(const char *filename)
     sprintf(scanstr, "%%10c%%%zic%%n ", seq_len);
     mstab->mseq = malloc(sizeof(*(mstab->mseq)) * mstab->len);
     alloc_chk(mstab->mseq, errfree, err_str);
-    for(mseq = mstab->mseq; mseq < mstab->mseq + mstab->len; mseq++) {
+
+    tmp_buf = malloc(sizeof(*tmp_buf) * seq_len);
+    alloc_chk(tmp_buf, errfree, err_str);
+
+    for(mseq = mstab->mseq; mseq < (mstab->mseq + mstab->len); mseq++) {
         mseq->len = seq_len;
-        tmp_buf = malloc(sizeof(*(mseq->seq) * mseq->len));
-        alloc_chk(tmp_buf, errfree, err_str);
-        if(fscanf(gendatf, scanstr, mseq->name, tmp_buf, &nread) != PHY_N_SEQ_FIELD || nread != (mseq->len + PHY_NAME_LEN)) {
+        count = fscanf(gendatf, scanstr, mseq->name, tmp_buf, &nread);
+        if(count != PHY_N_SEQ_FIELD || nread != (mseq->len + PHY_NAME_LEN)) {
             err = -MPCGS_EBADFORMAT;
             err_str = "bad file format";
             goto errfree;
         } 
         mseq->name[PHY_NAME_LEN] = '\0';
-    }
 
+        mseq->seq = malloc(sizeof(*(mseq->seq)) * mseq->len);
+        alloc_chk(mseq->seq, errfree, err_str);
+        for(i = 0; i < mseq->len; i++) {
+            mseq->seq[i] = char_to_mol(tmp_buf[i], MOL_DNA);
+            if(mseq->seq[i] == MOL_INVALID) {
+                err = -MPCGS_EBADFORMAT;
+                err_str = "unrecognized molecule";
+                goto errfree;
+            }
+        }
+    }
+    free(tmp_buf);
+    
+    fclose(gendatf);
     return(mstab);
 
 errfree:
     free_ms_tab(mstab);
+    if(tmp_buf) {
+        free(tmp_buf);
+    }
 errclose:
     fclose(gendatf);
 errout:

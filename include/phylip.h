@@ -2,7 +2,7 @@
     phylip.h allows parsing of a .phy file. See:
     http://evolution.genetics.washington.edu/phylip/doc/sequence.html
 
-    Copyright (C) {2017}  {Philip Davis}
+    Copyright (C) 2017  Philip Davis
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -74,6 +74,11 @@ enum mol_t {
     PRO_UNKNOWN_OR_DEL,
     PRO_DEL,
     MOL_INVALID = 255
+};
+
+enum mol_cat {
+    MOL_DNA,
+    MOL_PRO
 };
 
 struct mol_seq {

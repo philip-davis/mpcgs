@@ -4,4 +4,5 @@ bin_PROGRAMS = mpcgs
 
 mpcgs_SOURCES = main.c \
                 phylip.c \
-                debug.c
+                debug.c \
+                mpcgs.c

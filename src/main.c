@@ -1,7 +1,7 @@
 /*
     mpcgs - multiple-proposal coalescent genealogy sampler
 
-    Copyright (C) {2017}  {Philip Davis}
+    Copyright (C) 2017  Philip Davis
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include<string.h>
 
 #include "debug.h"
+#include "mpcgs.h"
 #include "phylip.h"
 
 //Argument parsing
@@ -44,19 +45,27 @@ static struct argp_option options[] = {
     { 0 }
 };
 
-struct arguments {
-    char *gdatfile;
-};
-
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
 
-    struct arguments *arguments = state->input;
+    struct mpcgs_opt_t *arguments = state->input;
 
     switch(key) {
+        case 'b':
+            arguments->nburn = atoi(arg);
+            break;
+        case 'c':
+            arguments->nchain = atoi(arg);
+            break;
         case 'i':
             arguments->gdatfile = arg;
+            break;
+        case 'n':
+            arguments->niter = atoi(arg);
+            break;
+        case 't':
+            arguments->init_theta = atof(arg);
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -73,20 +82,18 @@ static struct argp argp = {options, parse_opt, 0, doc};
 int main(int argc, char *argv[])
 {
 
-    struct arguments arguments;
+    struct mpcgs_opt_t options = {0};
     int err;
 
     mpcgs_log_init();
     mpcgs_set_log_threshold(MPCGS_LOG_HIDEBUG);
 
-    err = argp_parse(&argp, argc, argv, 0, 0, &arguments);
+    err = argp_parse(&argp, argc, argv, 0, 0, &options);
     if(err) {
         err_out("parsing arguments", strerror(err), -err);
     }
 
-    init_ms_tab(arguments.gdatfile);
-
-    printf("Theta estimate: 1.521\n");
+    mpcgs_estimate(&options);
 
     return 0;
 
