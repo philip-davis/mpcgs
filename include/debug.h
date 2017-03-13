@@ -38,54 +38,16 @@ static enum mpcgs_log_level_t err_threshold;
 static FILE *mpcgs_logfile;
 static FILE *mpcgs_errfile;
 
-void mpcgs_set_log_threshold(const enum mpcgs_log_level_t log_level)
-{
-
-    log_threshold = log_level;
-
-}
-
-void mpcgs_set_err_threshold(const enum mpcgs_log_level_t err_level)
-{
-
-   err_threshold = err_level;
-
-}
-
-void mpcgs_set_log_file(FILE *log_file)
-{
-
-    mpcgs_logfile = log_file;
-
-}
-
-void mpcgs_set_err_file(FILE *err_file)
-{
-
-    mpcgs_errfile = err_file;
-
-}
-
-void mpcgs_log_init()
-{
-
-    log_threshold = MPCGS_LOG_NONE;
-    err_threshold = MPCGS_LOG_ERR;
-    mpcgs_logfile = stdout;
-    mpcgs_errfile = stderr;
-
-}
-
 #define mpcgs_log(log_level, ...) {\
-    if(log_level <= log_threshold) {\
-        fprintf(mpcgs_logfile, __VA_ARGS__);\
+    if(log_level <= mpcgs_get_log_threshold()) {\
+        fprintf(mpcgs_get_log_file(), __VA_ARGS__);\
         fflush(mpcgs_logfile);\
     }\
 }
 
 #define mpcgs_err(log_level, ...) {\
-    if(log_level <= err_threshold) {\
-        fprintf(mpcgs_errfile, __VA_ARGS__);\
+    if(log_level <= mpcgs_get_err_threshold()) {\
+        fprintf(mpcgs_get_err_file(), __VA_ARGS__);\
         fflush(mpcgs_errfile);\
     }\
 }
@@ -98,6 +60,24 @@ void mpcgs_log_init()
 #define err_warn(...) mpcgs_err(MPCGS_LOG_WARN, __VA_ARGS__)
 #define err_debug(...) mpcgs_debug(MPCGS_LOG_DEBUG, __VA_ARGS__)
 #define err_hidebug(...) mpcgs_hidebug(MPCGS_LOG_HIDEBUG, __VA_ARGS__)
+
+#define alloc_chk(ptr, target, errstr) {\
+    if(!ptr) {\
+        errstr = strerror(ENOMEM);\
+        goto target;\
+    }\
+}
+
+void mpcgs_set_log_threshold(const enum mpcgs_log_level_t log_level);
+void mpcgs_set_err_threshold(const enum mpcgs_log_level_t err_level);
+void mpcgs_set_log_file(FILE *log_file);
+void mpcgs_set_err_file(FILE *err_file);
+int mpcgs_get_log_threshold();
+int mpcgs_get_err_threshold();
+FILE *mpcgs_get_log_file();
+FILE *mpcgs_get_err_file();
+void mpcgs_log_init();
+void err_out(const char *err_name, const char *err_str, int rc);
 
 //TODO Adapt CUDA debugging facilities.
 

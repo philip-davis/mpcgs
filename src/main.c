@@ -1,5 +1,4 @@
 /*
-
     mpcgs - multiple-proposal coalescent genealogy sampler
 
     Copyright (C) {2017}  {Philip Davis}
@@ -16,15 +15,16 @@
 
     You should have received a copy of the GNU General Public License
     along with this program. If not, see <http://www.gnu.org/licenses/>.
-
 */
 
-#include <stdio.h>
-#include <argp.h>
-#include <errno.h>
-#include <string.h>
+#include<argp.h>
+#include<errno.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
 
 #include "debug.h"
+#include "phylip.h"
 
 //Argument parsing
 const char *argp_program_version = "mpcgs 0.2.0a";
@@ -81,9 +81,10 @@ int main(int argc, char *argv[])
 
     err = argp_parse(&argp, argc, argv, 0, 0, &arguments);
     if(err) {
-        err_err("Error while parsing arguments: %s.\n", strerror(err));
-        return err;
+        err_out("parsing arguments", strerror(err), -err);
     }
+
+    init_ms_tab(arguments.gdatfile);
 
     printf("Theta estimate: 1.521\n");
 

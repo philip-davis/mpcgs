@@ -1,5 +1,4 @@
 /*
-
     phylip.h allows parsing of a .phy file. See:
     http://evolution.genetics.washington.edu/phylip/doc/sequence.html
 
@@ -17,7 +16,6 @@
 
     You should have received a copy of the GNU General Public License
     along with this program. If not, see <http://www.gnu.org/licenses/>.
-
 */
 
 #ifndef MPCGS_PHYLIP_H
@@ -26,6 +24,10 @@
 #include<stdlib.h>
 
 //TODO add support for interleaved .phy files.
+
+#define PHY_NAME_LEN 10
+#define PHY_N_HDR_ATTR 2
+#define PHY_N_SEQ_FIELD 2
 
 enum mol_t { 
     DNA_A, 
@@ -71,13 +73,13 @@ enum mol_t {
     PRO_NONSENSE,
     PRO_UNKNOWN_OR_DEL,
     PRO_DEL,
-    MOL_INVALID = 255;
+    MOL_INVALID = 255
 };
 
 struct mol_seq {
     size_t len;
     char *seq;
-    char name[11];
+    char name[PHY_NAME_LEN + 1];
 };
 
 struct ms_tab {
@@ -85,6 +87,8 @@ struct ms_tab {
     struct mol_seq *mseq;
 };
 
-int init_ms_tab(const char *filename, struct ms_tab *mstab);
+struct ms_tab *init_ms_tab(const char *filename);
+void free_mol_seq(struct mol_seq *mseq);
+void free_ms_tab(struct ms_tab *mstab);
 
 #endif /* MPCGS_PHYLIP_H */
