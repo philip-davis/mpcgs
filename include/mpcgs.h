@@ -31,6 +31,6 @@ struct mpcgs_opt_t {
     double init_theta;
 }; 
 
-void mpcgs_estimate(mpcgs_opt_t *options);
+void mpcgs_estimate(struct mpcgs_opt_t *options);
 
 #endif /* MPCGS_H */

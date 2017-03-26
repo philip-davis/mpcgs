@@ -27,6 +27,12 @@
 #include "mpcgs.h"
 #include "phylip.h"
 
+#define MPCGS_FLAG_NBURN 0x01
+#define MPCGS_FLAG_NCHAIN 0x02
+#define MPCGS_FLAG_GDATFILE 0x04
+#define MPCGS_FLAG_NITER 0x08
+#define MPCGS_FLAG_THETA 0x10
+
 //Argument parsing
 const char *argp_program_version = "mpcgs 0.2.0a";
 static char doc[] = "mpcgs -- a parallel coalescent genealogy sampler.";
@@ -50,6 +56,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
 
     struct mpcgs_opt_t *arguments = state->input;
+    static unsigned int optflags = 0;
 
     switch(key) {
         case 'b':
@@ -69,7 +76,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             break;
         default:
             return ARGP_ERR_UNKNOWN;
-    } 
+    }
+
+    
+
     return 0;
 
 }
@@ -82,18 +92,18 @@ static struct argp argp = {options, parse_opt, 0, doc};
 int main(int argc, char *argv[])
 {
 
-    struct mpcgs_opt_t options = {0};
+    struct mpcgs_opt_t args = {0};
     int err;
 
     mpcgs_log_init();
     mpcgs_set_log_threshold(MPCGS_LOG_HIDEBUG);
 
-    err = argp_parse(&argp, argc, argv, 0, 0, &options);
+    err = argp_parse(&argp, argc, argv, 0, 0, &args);
     if(err) {
         err_out("parsing arguments", strerror(err), -err);
     }
 
-    mpcgs_estimate(&options);
+    mpcgs_estimate(&args);
 
     return 0;
 

@@ -17,18 +17,26 @@
     along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 
+#include "debug.h"
 #include "mpcgs.h"
 #include "phylip.h"
 
-void mpcgs_estimate(mpcgs_opt_t *options)
+void mpcgs_estimate(struct mpcgs_opt_t *options)
 {
 
     struct ms_tab *data;
-    int i;
+    int i, err;
 
-    if(!filename) {
-        //err
+    const char *err_name = "estimating theta";
+    char *err_str;
+
+    if(!options->gdatfile) {
+        err = EINVAL;
+        err_str = "no sequence file given";
     }
     data = init_ms_tab(options->gdatfile);
     
@@ -43,6 +51,10 @@ void mpcgs_estimate(mpcgs_opt_t *options)
 
     }  
 
+    free_ms_tab(data);
+
+errout:
+    err_out(err_name, err_str, -err);
 
 }
 
