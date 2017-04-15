@@ -155,3 +155,34 @@ void free_ms_tab(struct ms_tab *mstab)
     free(mstab);
 
 }
+
+unsigned int get_mol_counts(struct ms_tab *mstab, unsigned int *counts)
+{
+	
+	int i, j;
+	struct mol_seq *mseq;
+	unsigned int total = 0;
+	
+	if(!mstab) {
+		err_warn("Trying to find molecule counts for a null ms_tab.\n");
+		return(0);
+	}
+	
+	if(!counts) {
+		err_warn("Trying to write counts into a null buffer.\n");
+		return(0);
+	}
+	
+	memset(counts, 0, PHY_NUM_MOL_T);
+	
+	for(i = 0; i < mstab->len; i++) {
+		mseq = &mstab->mseq[i];
+		for(j = 0; j < mseq->len; j++) {
+				counts[mseq->seq[j]]++;
+				total++;
+		}
+	}
+	
+	return(total);
+	
+}

@@ -1,0 +1,8 @@
+- mpcgs 
+
+- sfmt located in ./sfmt. See ./license/sfmt.txt
+
+- some likelihood calculation code is adapted from LAMARC, as noted in
+  ./src/TBD
+
+

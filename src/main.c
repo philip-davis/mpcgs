@@ -26,6 +26,7 @@
 #include "debug.h"
 #include "mpcgs.h"
 #include "phylip.h"
+#include "tree.h"
 
 #define MPCGS_FLAG_NBURN 0x01
 #define MPCGS_FLAG_NCHAIN 0x02

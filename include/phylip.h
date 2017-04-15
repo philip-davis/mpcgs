@@ -29,6 +29,8 @@
 #define PHY_N_HDR_ATTR 2
 #define PHY_N_SEQ_FIELD 2
 
+#define PHY_NUM_MOL_T 256
+
 enum mol_t { 
     DNA_A, 
     DNA_T, 
@@ -73,7 +75,7 @@ enum mol_t {
     PRO_NONSENSE,
     PRO_UNKNOWN_OR_DEL,
     PRO_DEL,
-    MOL_INVALID = 255
+    MOL_INVALID = PHY_NUM_MOL_T - 1
 };
 
 enum mol_cat {
@@ -95,5 +97,6 @@ struct ms_tab {
 struct ms_tab *init_ms_tab(const char *filename);
 void free_mol_seq(struct mol_seq *mseq);
 void free_ms_tab(struct ms_tab *mstab);
+unsigned int get_mol_counts(struct ms_tab *mstab, unsigned int *counts);
 
 #endif /* MPCGS_PHYLIP_H */
