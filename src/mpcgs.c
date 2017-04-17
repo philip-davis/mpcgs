@@ -24,11 +24,14 @@
 #include "debug.h"
 #include "mpcgs.h"
 #include "phylip.h"
+#include "tree.h"
 
 void mpcgs_estimate(struct mpcgs_opt_t *options)
 {
 
     struct ms_tab *data;
+	struct gene_tree *curr_tree;
+	float theta;
     int i, err;
 
     const char *err_name = "estimating theta";
@@ -38,8 +41,16 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
         err = EINVAL;
         err_str = "no sequence file given";
     }
+	
+	theta = options->init_theta;
     data = init_ms_tab(options->gdatfile);
-    
+    curr_tree = gtree_init(theta, data->len);
+	gtree_add_seqs_to_tips(curr_tree, data);
+	gtree_set_exp(curr_tree);
+	gtree_print_newick(curr_tree);
+	gtree_set_llhood(curr_tree);
+	log_debug("init tree root time: %f\n", curr_tree->root->time);
+	log_debug("init tree log likelihood: %f\n", curr_tree->llhood);
     //init tree
 
     for(i = 0; i < options->nchain; i++) {
@@ -51,7 +62,11 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 
     }  
 
+	//TODO: free tree
+	
     free_ms_tab(data);
+	
+	return;
 
 errout:
     err_out(err_name, err_str, -err);

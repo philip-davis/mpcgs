@@ -25,16 +25,21 @@
 
 #include "phylip.h"
 
+#define MPCGS_NUM_FREQ_TERM 8
+#define NUM_BASE 4
+
 enum {
-		FREQ_A = 0,
-		FREQ_T,
-		FREQ_C,
-		FREQ_G,
-		FREQ_AR,
-		FREQ_GR,
-		FREQ_CY,
-		FREQ_TY
+	FREQ_A = 0,
+	FREQ_T,
+	FREQ_C,
+	FREQ_G,
+	FREQ_AR,
+	FREQ_GR,
+	FREQ_CY,
+	FREQ_TY
 };
+
+
 
 struct gene_node {
 	int order;
@@ -44,21 +49,33 @@ struct gene_node {
 	struct gene_node *child2;
 	struct gene_node *prev;
 	struct gene_node *next;
-	struct mol_seq *seq;
+	struct gene_tree *tree;
+	struct mol_seq *mseq;
 	float time;
-	float expA, expB, expC;
+	int exp_valid;
+	float expA; 
+	float expB; 
+	float expC;
 };
 
 struct gene_tree {
+	struct ms_tab *mstab;
 	struct gene_node *nodes;
 	struct gene_node *tips;
 	size_t nnodes;
 	size_t ntips;
 	struct gene_node *root;
-	struct gene_node *lastnode;
-	float freq[8];
+	struct gene_node *last;
+	float lfreq[MPCGS_NUM_FREQ_TERM];
+	float xrate;
+	float yrate;
+	float llhood;
 };
 
-struct gene_tree *create_new_tree(float theta, size_t ntips);
+struct gene_tree *gtree_init(float theta, size_t ntips);
+void gtree_add_seqs_to_tips(struct gene_tree *gtree, struct ms_tab *mstab);
+void gtree_set_exp(struct gene_tree *gtree);
+void gtree_set_llhood(struct gene_tree *gtree);
+void gtree_print_newick(struct gene_tree *gtree);
 
 #endif /* MPCGS_TREE_H */

@@ -53,16 +53,11 @@ struct ms_tab *init_ms_tab(const char *filename)
     struct mol_seq *mseq;
     char scanstr[100];
     char *tmp_buf = NULL;
-    int i, err, count;
+    int i, count;
  
-    const char *err_name = "reading sequence data";
-    char *err_str;    
+    debug_var_decl("reading sequence data");
 
-    if(!filename) {
-        err = EINVAL;
-        err_str = "no sequence data file given";
-        goto errout;
-    } 
+	param_chk(filename, errout);
 
     gendatf = fopen(filename, "r");
     if(!gendatf) {
@@ -74,7 +69,7 @@ struct ms_tab *init_ms_tab(const char *filename)
     log_debug("Reading sequence data from %s.\n", filename);
 
     mstab = malloc(sizeof mstab);
-    alloc_chk(mstab, errclose, err_str);
+    alloc_chk(mstab, errclose);
 
     count = fscanf(gendatf, "%zi %zi ", &nseq, &seq_len);
     if(count != PHY_N_HDR_ATTR) {
@@ -85,12 +80,13 @@ struct ms_tab *init_ms_tab(const char *filename)
     log_debug("nseq = %zi, seqlen = %zi\n", nseq, seq_len);
     
     mstab->len = nseq;
+	mstab->seq_len = seq_len;
     sprintf(scanstr, "%%10c%%%zic%%n ", seq_len);
     mstab->mseq = malloc(sizeof(*(mstab->mseq)) * mstab->len);
-    alloc_chk(mstab->mseq, errfree, err_str);
+    alloc_chk(mstab->mseq, errfree);
 
     tmp_buf = malloc(sizeof(*tmp_buf) * seq_len);
-    alloc_chk(tmp_buf, errfree, err_str);
+    alloc_chk(tmp_buf, errfree);
 
     for(mseq = mstab->mseq; mseq < (mstab->mseq + mstab->len); mseq++) {
         mseq->len = seq_len;
@@ -103,7 +99,7 @@ struct ms_tab *init_ms_tab(const char *filename)
         mseq->name[PHY_NAME_LEN] = '\0';
 
         mseq->seq = malloc(sizeof(*(mseq->seq)) * mseq->len);
-        alloc_chk(mseq->seq, errfree, err_str);
+        alloc_chk(mseq->seq, errfree);
         for(i = 0; i < mseq->len; i++) {
             mseq->seq[i] = char_to_mol(tmp_buf[i], MOL_DNA);
             if(mseq->seq[i] == MOL_INVALID) {
@@ -126,7 +122,7 @@ errfree:
 errclose:
     fclose(gendatf);
 errout:
-    err_out(err_name, err_str, -err);
+    debug_err_out();
 
 }
 
@@ -163,26 +159,24 @@ unsigned int get_mol_counts(struct ms_tab *mstab, unsigned int *counts)
 	struct mol_seq *mseq;
 	unsigned int total = 0;
 	
-	if(!mstab) {
-		err_warn("Trying to find molecule counts for a null ms_tab.\n");
-		return(0);
-	}
+	debug_var_decl("tabulating molecule counts");
 	
-	if(!counts) {
-		err_warn("Trying to write counts into a null buffer.\n");
-		return(0);
-	}
+	param_chk(mstab && counts, errout);
+	
 	
 	memset(counts, 0, PHY_NUM_MOL_T);
 	
 	for(i = 0; i < mstab->len; i++) {
 		mseq = &mstab->mseq[i];
 		for(j = 0; j < mseq->len; j++) {
-				counts[mseq->seq[j]]++;
-				total++;
+			counts[mseq->seq[j]]++;
+			total++;
 		}
 	}
 	
 	return(total);
+	
+errout:
+    debug_err_out();
 	
 }

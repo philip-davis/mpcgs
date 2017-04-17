@@ -61,12 +61,31 @@ static FILE *mpcgs_errfile;
 #define err_debug(...) mpcgs_debug(MPCGS_LOG_DEBUG, __VA_ARGS__)
 #define err_hidebug(...) mpcgs_hidebug(MPCGS_LOG_HIDEBUG, __VA_ARGS__)
 
-#define alloc_chk(ptr, target, errstr) {\
+#define debug_var_decl(errname) \
+	int err, param_ok; \
+	const char *err_name = errname ; \
+	char *err_str
+	
+
+#define param_chk(param_ok, target) {\
+	if(!(param_ok)) {\
+		err = EINVAL; \
+		err_str = "passed invalid parameters" ; \
+		goto target ; \
+	} \
+}
+
+
+#define alloc_chk(ptr, target) {\
     if(!ptr) {\
-        errstr = strerror(ENOMEM);\
+        err_str = strerror(ENOMEM);\
+		err = ENOMEM; \
         goto target;\
     }\
 }
+
+#define debug_err_out() err_out(err_name, err_str, -err)
+
 
 void mpcgs_set_log_threshold(const enum mpcgs_log_level_t log_level);
 void mpcgs_set_err_threshold(const enum mpcgs_log_level_t err_level);

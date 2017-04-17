@@ -92,6 +92,7 @@ struct mol_seq {
 struct ms_tab {
     size_t len;
     struct mol_seq *mseq;
+	size_t seq_len;
 };
 
 struct ms_tab *init_ms_tab(const char *filename);

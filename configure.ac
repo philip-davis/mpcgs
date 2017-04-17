@@ -8,4 +8,6 @@ AC_PROG_CC
 
 AC_DEFINE(SFMT_MEXP,19937)
 
+LIBS+="-lm"
+
 AC_OUTPUT(Makefile)
