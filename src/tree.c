@@ -351,7 +351,7 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 		//TODO: handle error
 	}
 	
-	log_debug("Setting components for node %i:\n", gnode->idx);
+	//log_debug("Setting components for node %i:\n", gnode->idx);
 	
 	/************************************************************
 	 * The following code adapted from LAMARC, (c) 2002 
@@ -381,7 +381,7 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 	sumPyr += exp((lfreq[FREQ_TY] + cllike[DNA_T]) - normal);
 	lsumPyr = log(sumPyr) + normal;
 	
-	log_debug("sumAllfact = %f, lsumAll = %f, sumPur = %f, lsumPur = %f, sumPyr = %f, lsumPyr = %f\n", sumAllfact, lsumAll, sumPur, lsumPur, sumPyr, lsumPyr);
+	//log_debug("sumAllfact = %f, lsumAll = %f, sumPur = %f, lsumPur = %f, sumPyr = %f, lsumPyr = %f\n", sumAllfact, lsumAll, sumPur, lsumPur, sumPyr, lsumPyr);
 	
 	for(i = 0; i < NUM_BASE; i++) {
 		//TODO: place these components into an array rather than recalc?
@@ -391,7 +391,7 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 		comp += exp((log(gnode->expB) + cllike[i]) - normal);
 		comp += exp((log(gnode->expC) + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - normal);
 		lcomps[i] = log(comp) + normal;
-		log_debug("comp[%i] = %f, lcomps[%i] = %f\n", i, comp, i, lcomps[i]);
+		//log_debug("comp[%i] = %f, lcomps[%i] = %f\n", i, comp, i, lcomps[i]);
 	}
 	/***********************************************************/
 	
@@ -459,12 +459,13 @@ void gtree_set_llhood(struct gene_tree *gtree)
 		normal = -FLT_MAX;
 		gnode_get_llhoods(gtree->root, pos_llhood_vals, i, gtree->lfreq);
 		//Jumping through this hoop to prevent under-run.
-		for(j = 0; j < 3; j++) {
+		for(j = 0; j < 4; j++) {
 			normal = fmaxf(normal, (pos_llhood_vals[j] + gtree->lfreq[j]));
 		}
-		for(j = 0; j < 3; j++) {
+		for(j = 0; j < 4; j++) {
 			lhood += exp((pos_llhood_vals[j] + gtree->lfreq[j]) - normal);
 		}
+		printf("%f\n", log(lhood) + normal);
 		llhood += log(lhood) + normal; // <--is this right?
 	}
 	
