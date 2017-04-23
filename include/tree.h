@@ -56,6 +56,9 @@ struct gene_node {
 	float expA; 
 	float expB; 
 	float expC;
+	float lexpA;
+	float lexpB;
+	float lexpC;
 };
 
 struct gene_tree {

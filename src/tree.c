@@ -42,7 +42,7 @@ float get_next_coal_time(unsigned int active, unsigned int inactive,
 	
 	r = sfmt_genrand_real3(sfmt); // Uniform on interval (0,1)
 	if(2 == act_coal) {
-		denom = ((float)active * (float)(active - 1)) / 2; 
+		denom = ((float)active * (float)(active - 1)) / 2.0; 
 	} else if(1 == act_coal) {
 		denom = (float)active * (float)inactive;
 	} else {
@@ -50,7 +50,11 @@ float get_next_coal_time(unsigned int active, unsigned int inactive,
 		return(FLT_MAX);
 	}
 	
+	errno = 0;
 	time = -(log(r) * theta) / (2.0 * denom);
+	if(errno || time == 0.0) {
+		err_warn("Random number generator returned an invalid value.\n");
+	}
 	return(time);
 	
 errout:
@@ -159,6 +163,7 @@ static void gtree_simulate_tree(struct gene_tree *gtree, float theta)
 	param_chk(gtree && theta > 0.0, errout);
 
 	gettimeofday(&seed, NULL);
+	log_debug("rseed = %li\n", seed.tv_usec);
 	sfmt_init_gen_rand(&sfmt, seed.tv_usec);
 	
 	nbranch = gtree->ntips;
@@ -298,7 +303,7 @@ void gtree_add_seqs_to_tips (struct gene_tree *gtree, struct ms_tab *mstab)
 static void gnode_set_exp(struct gene_node *gnode, float xrate, float yrate)
 {
 	
-	float length, n;
+	float length, n, n1, n2;
 	struct gene_node *parent;
 	
 	if(!gnode) {
@@ -312,10 +317,22 @@ static void gnode_set_exp(struct gene_node *gnode, float xrate, float yrate)
 		 * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
 		 * TODO: license ref?
 		********************************************************/
+		errno = 0;
 		n = exp(length * xrate);
+		n1 = (length * xrate) / 2.0;
+		n2 = (length * yrate) / 2.0;
+		if(errno) {
+			err_debug("Value overflow setting n\n");
+		}
+		if(n == 1.0) {
+			err_debug("n is 1.0, this will cause problems later...\n");
+		}
 		gnode->expA = 1.0 - n;
+		gnode->lexpA = n1 + log(exp(-n1) - exp(n1));
 		gnode->expB = n * exp(length * yrate);
+		gnode->lexpB = (2.0 * n1) + (length * yrate);
 		gnode->expC = n - gnode->expB;
+		gnode->lexpC = (2.0 * n1) + n2 + log(exp(-n2) - exp(n2));
 		/*******************************************************/
 		gnode->exp_valid = 1;
 	}
@@ -363,33 +380,52 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 		normal = fmaxf(normal, (lfreq[i] + cllike[i]));
 	}
 	sumAllfact = 0;
+	errno = 0;
 	for(i = 0; i < NUM_BASE; i++) {
 		sumAllfact += exp((lfreq[i] + cllike[i]) - normal);
 	}
-	
-	lsumAll = log(gnode->expA) + log(sumAllfact) + normal;
+	if(sumAllfact <= 0.0 || errno) {
+		//err_debug("Intermediate sumAllfact is invalid.\n");
+	}
+	//lsumAll = log(gnode->expA) + log(sumAllfact) + normal;
+	lsumAll = gnode->lexpA + log(sumAllfact) + normal;
 	
 	normal = fmaxf((lfreq[FREQ_AR] + cllike[DNA_A]), 
 				   (lfreq[FREQ_GR] + cllike[DNA_G]));
+	errno = 0;
 	sumPur = exp((lfreq[FREQ_AR] + cllike[DNA_A]) - normal);
 	sumPur += exp((lfreq[FREQ_GR] + cllike[DNA_G]) - normal);
+	if(sumPur <= 0.0 || errno) {
+		err_debug("Intermediate sumPur is invalid.\n");
+	}
 	lsumPur = log(sumPur) + normal;
 	
 	normal = fmaxf((lfreq[FREQ_CY] + cllike[DNA_C]), 
 				   (lfreq[FREQ_TY] + cllike[DNA_T]));
+	errno = 0;
 	sumPyr = exp((lfreq[FREQ_CY] + cllike[DNA_C]) - normal);
 	sumPyr += exp((lfreq[FREQ_TY] + cllike[DNA_T]) - normal);
+	if(sumPyr <= 0.0 || errno) {
+		err_debug("Intermediate sumPyr is invalid.\n");
+	}
 	lsumPyr = log(sumPyr) + normal;
 	
 	//log_debug("sumAllfact = %f, lsumAll = %f, sumPur = %f, lsumPur = %f, sumPyr = %f, lsumPyr = %f\n", sumAllfact, lsumAll, sumPur, lsumPur, sumPyr, lsumPyr);
 	
 	for(i = 0; i < NUM_BASE; i++) {
 		//TODO: place these components into an array rather than recalc?
-		normal = fmaxf(lsumAll, (log(gnode->expB) + cllike[i]));
-		normal = fmaxf(normal, (log(gnode->expC) + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)));
+		//normal = fmaxf(lsumAll, (log(gnode->expB) + cllike[i]));
+		//normal = fmaxf(normal, (log(gnode->expC) + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)));
+		normal = fmaxf(lsumAll, (gnode->lexpB + cllike[i]));
+		normal = fmaxf(normal, gnode->lexpC);
+		/*
 		comp = exp(lsumAll - normal);
 		comp += exp((log(gnode->expB) + cllike[i]) - normal);
 		comp += exp((log(gnode->expC) + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - normal);
+		*/
+		comp = exp(lsumAll - normal);
+		comp += exp((gnode->lexpB + cllike[i]) - normal);
+		comp += exp((gnode->lexpC + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - 			normal);
 		lcomps[i] = log(comp) + normal;
 		//log_debug("comp[%i] = %f, lcomps[%i] = %f\n", i, comp, i, lcomps[i]);
 	}

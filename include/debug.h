@@ -58,8 +58,8 @@ static FILE *mpcgs_errfile;
 #define log_hidebug(...) mpcgs_log(MPCGS_LOG_HIDEBUG, __VA_ARGS__)
 #define err_err(...) mpcgs_err(MPCGS_LOG_ERR, __VA_ARGS__)
 #define err_warn(...) mpcgs_err(MPCGS_LOG_WARN, __VA_ARGS__)
-#define err_debug(...) mpcgs_debug(MPCGS_LOG_DEBUG, __VA_ARGS__)
-#define err_hidebug(...) mpcgs_hidebug(MPCGS_LOG_HIDEBUG, __VA_ARGS__)
+#define err_debug(...) mpcgs_err(MPCGS_LOG_DEBUG, __VA_ARGS__)
+#define err_hidebug(...) mpcgs_err(MPCGS_LOG_HIDEBUG, __VA_ARGS__)
 
 #define debug_var_decl(errname) \
 	int err, param_ok; \
