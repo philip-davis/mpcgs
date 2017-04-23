@@ -182,7 +182,7 @@ static void gtree_simulate_tree(struct gene_tree *gtree, float theta)
 		node->time = current;
 		child1 = &branches[sfmt_genrand_uint32(&sfmt) % nbranch];
 		child2 = &branches[sfmt_genrand_uint32(&sfmt) % (nbranch-1)];
-		if(child1 == child2) {
+		if(child1 <= child2) {
 			child2++;
 		}
 		add_child(node, *child1);
@@ -382,47 +382,64 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 	sumAllfact = 0;
 	errno = 0;
 	for(i = 0; i < NUM_BASE; i++) {
-		sumAllfact += exp((lfreq[i] + cllike[i]) - normal);
+		if(cllike[i] > -FLT_MAX) {
+			sumAllfact += exp((lfreq[i] + cllike[i]) - normal);
+		}
 	}
 	if(sumAllfact <= 0.0 || errno) {
-		//err_debug("Intermediate sumAllfact is invalid.\n");
+		err_debug("Intermediate sumAllfact is invalid.\n");
 	}
-	//lsumAll = log(gnode->expA) + log(sumAllfact) + normal;
 	lsumAll = gnode->lexpA + log(sumAllfact) + normal;
 	
 	normal = fmaxf((lfreq[FREQ_AR] + cllike[DNA_A]), 
 				   (lfreq[FREQ_GR] + cllike[DNA_G]));
 	errno = 0;
-	sumPur = exp((lfreq[FREQ_AR] + cllike[DNA_A]) - normal);
-	sumPur += exp((lfreq[FREQ_GR] + cllike[DNA_G]) - normal);
-	if(sumPur <= 0.0 || errno) {
+	sumPur = 0;
+	if(cllike[DNA_A] > -FLT_MAX) {
+		sumPur += exp((lfreq[FREQ_AR] + cllike[DNA_A]) - normal);
+	}
+	if(cllike[DNA_G] > -FLT_MAX) {
+		sumPur += exp((lfreq[FREQ_GR] + cllike[DNA_G]) - normal);
+	}
+	if(sumPur < 0 || errno) {
 		err_debug("Intermediate sumPur is invalid.\n");
 	}
-	lsumPur = log(sumPur) + normal;
+	
+	if(sumPur > 0) {
+		lsumPur = log(sumPur) + normal;
+	} else {
+		lsumPur = -FLT_MAX;
+	}
 	
 	normal = fmaxf((lfreq[FREQ_CY] + cllike[DNA_C]), 
 				   (lfreq[FREQ_TY] + cllike[DNA_T]));
 	errno = 0;
-	sumPyr = exp((lfreq[FREQ_CY] + cllike[DNA_C]) - normal);
-	sumPyr += exp((lfreq[FREQ_TY] + cllike[DNA_T]) - normal);
-	if(sumPyr <= 0.0 || errno) {
+	sumPyr = 0;
+	if(cllike[DNA_C] > -FLT_MAX) {
+		sumPyr += exp((lfreq[FREQ_CY] + cllike[DNA_C]) - normal);
+	}
+	if(cllike[DNA_T] > -FLT_MAX) {
+		sumPyr += exp((lfreq[FREQ_TY] + cllike[DNA_T]) - normal);
+	}
+	
+	if(sumPyr < 0.0 || errno) {
 		err_debug("Intermediate sumPyr is invalid.\n");
 	}
-	lsumPyr = log(sumPyr) + normal;
+	
+	if(sumPyr > 0) {
+		lsumPyr = log(sumPyr) + normal;
+	} else {
+		lsumPyr = -FLT_MAX;
+	}
 	
 	//log_debug("sumAllfact = %f, lsumAll = %f, sumPur = %f, lsumPur = %f, sumPyr = %f, lsumPyr = %f\n", sumAllfact, lsumAll, sumPur, lsumPur, sumPyr, lsumPyr);
 	
 	for(i = 0; i < NUM_BASE; i++) {
 		//TODO: place these components into an array rather than recalc?
-		//normal = fmaxf(lsumAll, (log(gnode->expB) + cllike[i]));
-		//normal = fmaxf(normal, (log(gnode->expC) + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)));
+	
 		normal = fmaxf(lsumAll, (gnode->lexpB + cllike[i]));
-		normal = fmaxf(normal, gnode->lexpC);
-		/*
-		comp = exp(lsumAll - normal);
-		comp += exp((log(gnode->expB) + cllike[i]) - normal);
-		comp += exp((log(gnode->expC) + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - normal);
-		*/
+		normal = fmaxf(normal, (gnode->lexpC + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)));
+
 		comp = exp(lsumAll - normal);
 		comp += exp((gnode->lexpB + cllike[i]) - normal);
 		comp += exp((gnode->lexpC + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - 			normal);
@@ -501,10 +518,10 @@ void gtree_set_llhood(struct gene_tree *gtree)
 		for(j = 0; j < 4; j++) {
 			lhood += exp((pos_llhood_vals[j] + gtree->lfreq[j]) - normal);
 		}
-		printf("%f\n", log(lhood) + normal);
-		llhood += log(lhood) + normal; // <--is this right?
+		printf("%f,", log(lhood) + normal);
+		llhood += log(lhood) + normal;
 	}
-	
+	printf("\n");
 	gtree->llhood = llhood;
 	
 }

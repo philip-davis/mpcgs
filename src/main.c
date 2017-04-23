@@ -98,6 +98,7 @@ int main(int argc, char *argv[])
 
     mpcgs_log_init();
     mpcgs_set_log_threshold(MPCGS_LOG_HIDEBUG);
+	mpcgs_set_err_threshold(MPCGS_LOG_HIDEBUG);
 
     err = argp_parse(&argp, argc, argv, 0, 0, &args);
     if(err) {
