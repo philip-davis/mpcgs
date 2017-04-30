@@ -24,6 +24,7 @@
 #include<string.h>
 
 #include "phylip.h"
+#include "SFMT.h"
 
 #define MPCGS_NUM_FREQ_TERM 8
 #define NUM_BASE 4
@@ -53,9 +54,6 @@ struct gene_node {
 	struct mol_seq *mseq;
 	float time;
 	int exp_valid;
-	float expA; 
-	float expB; 
-	float expC;
 	float lexpA;
 	float lexpB;
 	float lexpC;
@@ -75,10 +73,17 @@ struct gene_tree {
 	float llhood;
 };
 
-struct gene_tree *gtree_init(float theta, size_t ntips);
+struct gnode_list {
+	struct gene_node **gnodes;
+	int head;
+	int tail;
+};
+
+struct gene_tree *gtree_init(float theta, size_t ntips, sfmt_t *sfmt);
 void gtree_add_seqs_to_tips(struct gene_tree *gtree, struct ms_tab *mstab);
 void gtree_set_exp(struct gene_tree *gtree);
 void gtree_set_llhood(struct gene_tree *gtree);
 void gtree_print_newick(struct gene_tree *gtree);
+struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *sfmt);
 
 #endif /* MPCGS_TREE_H */

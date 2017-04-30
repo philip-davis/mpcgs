@@ -18,6 +18,7 @@
 #include<errno.h>
 #include<float.h>
 #include<math.h>
+#include<stdlib.h>
 #include<sys/time.h>
 
 #include "phylip.h"
@@ -25,6 +26,141 @@
 #include "debug.h"
 
 #include "SFMT.h"
+
+static void gnode_list_create(size_t list_size, struct gnode_list *list)
+{
+	
+	if(!list) {
+		//TODO: handle error
+	}
+	
+	list->gnodes = calloc(list_size, sizeof(*list->gnodes));
+	list->head = 0;
+	list->tail = 0;
+	
+}
+
+static void gnode_list_destroy(struct gnode_list *list)
+{
+
+	free(list->gnodes);
+
+}
+
+
+static unsigned int gnode_list_get_size(struct gnode_list *list)
+{
+
+	if(!list) {
+		//TODO: warn
+		return(0);
+	}
+
+	return(list->head - list->tail);
+
+}
+
+static void gnode_list_enqueue(struct gnode_list *list, struct gene_node *node)
+{
+
+	if(!list) {
+		//TODO: handle error
+	}
+
+	list->gnodes[list->head++] = node;
+
+}
+
+static void gnode_list_collate_head(struct gnode_list *list)
+{
+
+	struct gene_node *collate_target;
+	struct gene_node **target_pos;
+	float parent_time;
+
+	if(!list) {
+		//TODO: handle error
+	}
+
+	if(gnode_list_get_size(list) <= 1) {
+		return;
+	}
+
+	collate_target = list->gnodes[list->head-1];
+	if(collate_target->parent) {
+		parent_time = collate_target->parent->time;
+	} else {
+		parent_time = FLT_MAX;
+	}
+
+	target_pos = &list->gnodes[list->head - 1];
+	while(target_pos > &list->gnodes[list->tail]) {
+		*target_pos = *(target_pos-1);
+		if(parent_time > (*target_pos)->parent->time) {
+			break;
+		}
+		target_pos--;
+	}
+
+	*target_pos = collate_target;
+
+}
+
+static struct gene_node *gnode_list_dequeue(struct gnode_list *list)
+{
+
+	struct gene_node *node;
+
+	if(!list) {
+		//TODO: handle error
+	}
+
+	if(list->head == list->tail) {
+		return(NULL);
+	}
+
+	node = list->gnodes[list->tail++];
+
+	return(node);
+
+}
+
+static struct gene_node *gnode_list_get_tail(struct gnode_list *list)
+{
+
+	if(!list) {
+		//TODO: handle error
+	}
+
+	return(list->gnodes[list->tail]);
+
+}
+
+static int gnode_list_empty(struct gnode_list *list)
+{
+
+	if(!list) {
+		//TODO: handle error
+	}
+
+	return(list->head == list->tail);
+
+}
+
+static struct gene_node *gnode_list_get_random(struct gnode_list *list, sfmt_t *sfmt)
+{
+
+	if(!list || !sfmt) {
+		//TODO: handle error
+	}
+
+	if(gnode_list_get_size(list) == 0) {
+		return(NULL);
+	}
+
+	return(list->gnodes[list->tail + (sfmt_genrand_uint32(sfmt) % gnode_list_get_size(list))]);
+
+}
 
 float get_next_coal_time(unsigned int active, unsigned int inactive, 
 						unsigned int act_coal, float theta, sfmt_t *sfmt)
@@ -62,7 +198,7 @@ errout:
 	
 }
 
-static void gtree_nodes_init(struct gene_tree *gtree)
+static void gtree_nodes_init(struct gene_tree *gtree, size_t ntips)
 {
 	
 	struct gene_node *nodes;
@@ -73,9 +209,10 @@ static void gtree_nodes_init(struct gene_tree *gtree)
 	
 	param_chk(gtree, errout);
 	
-	gtree->nnodes = gtree->ntips - 1;
+	gtree->ntips = ntips;
+	gtree->nnodes = ntips - 1;
 	
-	nodes = calloc(gtree->nnodes, sizeof(*nodes)); 
+	nodes = calloc(gtree->nnodes + gtree->ntips, sizeof(*nodes)); 
 	alloc_chk(nodes, errout);
 	
 	for(i = 0; i < gtree->nnodes; i++) {
@@ -89,37 +226,15 @@ static void gtree_nodes_init(struct gene_tree *gtree)
 		
 	}
 	
+	for(i = gtree->nnodes; i < gtree->nnodes + gtree->ntips; i++) {
+		nodes[i].order = -1;
+		nodes[i].idx = i;
+		nodes[i].tree = gtree;
+	}		
+	
 	gtree->nodes = nodes;
+	gtree->tips = &nodes[gtree->nnodes];
 	gtree->root = &nodes[0];
-	
-	return;
-	
-errout:
-	debug_err_out();
-	
-}
-
-static void gtree_tips_init(struct gene_tree *gtree, size_t ntips)
-{
-	
-	struct gene_node *tips;
-	int i;
-	
-	debug_var_decl("allocating tree tips");
-	
-	param_chk(gtree && ntips > 0, errout);
-	
-	tips = calloc(ntips, sizeof(*tips));
-	alloc_chk(tips, errout);
-	
-	for(i = 0; i < ntips; i++) {
-		tips[i].order = -1;
-		tips[i].idx = (ntips - 1) + i; // tips come after (ntips - 1) nodes
-		tips[i].tree = gtree;
-	}
-	
-	gtree->tips = tips;
-	gtree->ntips = ntips;
 	
 	return;
 	
@@ -147,11 +262,9 @@ static void add_child(struct gene_node *parent, struct gene_node *child) {
 	
 }
 
-static void gtree_simulate_tree(struct gene_tree *gtree, float theta)
+static void gtree_simulate_tree(struct gene_tree *gtree, float theta, sfmt_t *sfmt)
 {
 	
-	sfmt_t sfmt;
-	struct timeval seed;
 	struct gene_node **branches;
 	struct gene_node *node, **child1, **child2;
 	int nbranch;
@@ -161,10 +274,6 @@ static void gtree_simulate_tree(struct gene_tree *gtree, float theta)
 	debug_var_decl("simulating gene tree");
 	
 	param_chk(gtree && theta > 0.0, errout);
-
-	gettimeofday(&seed, NULL);
-	log_debug("rseed = %li\n", seed.tv_usec);
-	sfmt_init_gen_rand(&sfmt, seed.tv_usec);
 	
 	nbranch = gtree->ntips;
 	branches = calloc(gtree->ntips, sizeof(*branches));
@@ -174,14 +283,14 @@ static void gtree_simulate_tree(struct gene_tree *gtree, float theta)
 	}
 	//TODO: refactor?
 	for(node = gtree->last; node; node = node->prev) {
-		coal_time = get_next_coal_time(nbranch, 0, 2, theta, &sfmt);
+		coal_time = get_next_coal_time(nbranch, 0, 2, theta, sfmt);
 		if(coal_time == FLT_MAX) {
 			//TODO: handle error
 		}
 		current += coal_time;
 		node->time = current;
-		child1 = &branches[sfmt_genrand_uint32(&sfmt) % nbranch];
-		child2 = &branches[sfmt_genrand_uint32(&sfmt) % (nbranch-1)];
+		child1 = &branches[sfmt_genrand_uint32(sfmt) % nbranch];
+		child2 = &branches[sfmt_genrand_uint32(sfmt) % (nbranch-1)];
 		if(child1 <= child2) {
 			child2++;
 		}
@@ -207,7 +316,7 @@ errout:
 	
 }
 
-struct gene_tree *gtree_init(float theta, size_t ntips)
+struct gene_tree *gtree_init(float theta, size_t ntips, sfmt_t *sfmt)
 {
 	
 	struct gene_tree *gtree;
@@ -219,9 +328,9 @@ struct gene_tree *gtree_init(float theta, size_t ntips)
 	gtree = calloc(1, sizeof(*gtree));
 	alloc_chk(gtree, errout);
 	
-	gtree_tips_init(gtree, ntips);
-	gtree_nodes_init(gtree);
-	gtree_simulate_tree(gtree, theta);
+	//gtree_tips_init(gtree, ntips);
+	gtree_nodes_init(gtree, ntips);
+	gtree_simulate_tree(gtree, theta, sfmt);
 
 	return(gtree);
 	
@@ -303,7 +412,7 @@ void gtree_add_seqs_to_tips (struct gene_tree *gtree, struct ms_tab *mstab)
 static void gnode_set_exp(struct gene_node *gnode, float xrate, float yrate)
 {
 	
-	float length, n, n1, n2;
+	float length, n1, n2;
 	struct gene_node *parent;
 	
 	if(!gnode) {
@@ -317,21 +426,10 @@ static void gnode_set_exp(struct gene_node *gnode, float xrate, float yrate)
 		 * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
 		 * TODO: license ref?
 		********************************************************/
-		errno = 0;
-		n = exp(length * xrate);
 		n1 = (length * xrate) / 2.0;
 		n2 = (length * yrate) / 2.0;
-		if(errno) {
-			err_debug("Value overflow setting n\n");
-		}
-		if(n == 1.0) {
-			err_debug("n is 1.0, this will cause problems later...\n");
-		}
-		gnode->expA = 1.0 - n;
 		gnode->lexpA = n1 + log(exp(-n1) - exp(n1));
-		gnode->expB = n * exp(length * yrate);
 		gnode->lexpB = (2.0 * n1) + (length * yrate);
-		gnode->expC = n - gnode->expB;
 		gnode->lexpC = (2.0 * n1) + n2 + log(exp(-n2) - exp(n2));
 		/*******************************************************/
 		gnode->exp_valid = 1;
@@ -491,7 +589,6 @@ static void gnode_get_llhoods(struct gene_node *gnode, float *llhoods,
 	
 }
 
-
 void gtree_set_llhood(struct gene_tree *gtree)
 {
 	
@@ -518,11 +615,222 @@ void gtree_set_llhood(struct gene_tree *gtree)
 		for(j = 0; j < 4; j++) {
 			lhood += exp((pos_llhood_vals[j] + gtree->lfreq[j]) - normal);
 		}
-		printf("%f,", log(lhood) + normal);
+		//printf("%f,", log(lhood) + normal);
 		llhood += log(lhood) + normal;
 	}
-	printf("\n");
+	//printf("\n");
 	gtree->llhood = llhood;
+	
+}
+
+static struct gene_tree *gtree_copy(struct gene_tree *gtree)
+{
+	
+	struct gene_tree *newtree;
+	struct gene_node *newnodes;
+	struct gene_node *gnode;
+	size_t nodesSz;
+	int i;
+	
+	if(!gtree) {
+		//TODO: handle error
+	}
+	
+	newtree = malloc(sizeof(*newtree));
+	
+	*newtree = *gtree;
+	
+	nodesSz = sizeof(*newtree->nodes) * (newtree->nnodes + newtree->ntips);
+	newnodes = malloc(nodesSz);
+	memcpy(newnodes, gtree->nodes, nodesSz);
+	
+	for(i = 0; i < newtree->nnodes + newtree->ntips; i++) {
+		//TODO: find a better way to do this
+		gnode = &newnodes[i];
+		if(gnode->parent) {
+			gnode->parent = &newnodes[gnode->parent - gtree->nodes];
+		}
+		if(gnode->child1) {
+			gnode->child1 = &newnodes[gnode->child1 - gtree->nodes];
+		}
+		if(gnode->child2) {
+			gnode->child2 = &newnodes[gnode->child2 - gtree->nodes];
+		}
+		if(gnode->prev) {
+			gnode->prev = &newnodes[gnode->prev - gtree->nodes];
+		}
+		if(gnode->next) {
+			gnode->next = &newnodes[gnode->next - gtree->nodes];
+		}
+		gnode->tree = newtree;
+		if(gnode->order == 0) {
+			newtree->root = gnode;
+		}
+		if(gnode->order == (newtree->nnodes - 1)) {
+			newtree->last = gnode;
+		}
+	}
+	
+	newtree->nodes = newnodes;
+	newtree->tips = &newnodes[gtree->nnodes];
+	
+}
+
+struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *sfmt)
+{
+	
+	struct gene_tree *proposal;
+	struct gene_node *target, *parent, *node, *tail;
+	struct gene_node *child1, *child2, *sibling;
+	struct gene_node *ival_end;
+	struct gene_node newnode;
+	struct gnode_list ival_list;
+	float currT, nextT, eventT;
+	int i;
+	
+	if(!current || !sfmt) {
+		//TODO: handle error
+	}
+	
+	gnode_list_create(current->nnodes + current->ntips, &ival_list);
+	
+	proposal = gtree_copy(current);
+	
+	target = &proposal->nodes[sfmt_genrand_uint32(sfmt) % ((current->nnodes + current->ntips) - 1)];
+	if(target >= proposal->root) {
+		target++;
+	}
+	parent = target->parent;
+	if(parent->child1 == target) {
+		parent->child1 = parent->child2;
+	}
+	parent->child2 = NULL;
+	target->parent = NULL;
+	
+	if(target->time == 0) {
+		//target is a tip
+		node = proposal->last;
+	} else {
+		node = target->prev;
+	}
+	while(node) {
+		child1 = node->child1;
+		child2 = node->child2;
+		if(child1 && child1->time <= target->time) {
+			gnode_list_enqueue(&ival_list, child1);
+		}
+		if(child2 && child2->time <= target->time) {
+			gnode_list_enqueue(&ival_list, child2);
+		}
+		node = node->prev;
+	}
+
+	/********************************************************
+	 * The following code adapted from LAMARC, (c) 2002
+	 * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
+	 * TODO: license ref?
+	 ********************************************************/
+	currT = target->time;
+
+	while(1) {
+
+		if(gnode_list_empty(&ival_list)) {
+			//TODO: handle error
+		}
+
+		ival_end = (gnode_list_get_tail(&ival_list))->parent;
+		if(ival_end) {
+			nextT = ival_end->time;
+			eventT = get_next_coal_time(1, gnode_list_get_size(&ival_list), 1, theta, sfmt);
+		} else {
+			nextT = FLT_MAX;
+			eventT = get_next_coal_time(2, 0, 2, theta, sfmt);
+		}
+		if((currT + eventT) < nextT) {
+			//TODO: refactor
+			//Create new coalescent
+			sibling = gnode_list_get_random(&ival_list, sfmt);
+
+			if(sibling == parent) {
+				sibling = parent->child1;
+			}
+			if(parent != sibling->parent) {
+				parent->parent = sibling->parent;
+				if(sibling->parent) {
+					if((sibling->parent)->child1 == sibling) {
+						(sibling->parent)->child1 = parent;
+					} else {
+						(sibling->parent)->child2 = parent;
+					}
+				}
+			}
+
+			parent->child1 = sibling;
+			parent->child2 = target;
+			target->parent = parent;
+			sibling->parent = parent;
+			if(parent->prev) {
+				(parent->prev)->next = parent->next;
+			}
+			if(parent->next) {
+				(parent->next)->prev = parent->prev;
+			} else {
+				//this node was last. This may be undone later.
+				proposal->last = parent->prev;
+			}
+			if(ival_end) {
+				parent->order = ival_end->order + 1; //fixup later
+				parent->next = ival_end->next;
+				ival_end->next = parent;
+				if(parent->next) {
+					(parent->next)->prev = parent;
+				}
+			} else {
+				parent->order = 0;
+				parent->prev = NULL;
+				parent->next = proposal->root;
+				(proposal->root)->prev = parent;
+				proposal->root = parent;
+			}
+			if(parent->next) {
+				(parent->next)->prev = parent;
+			} else {
+				proposal->last = parent;
+			}
+			parent->prev = ival_end;
+			parent->time = currT + eventT;
+			parent->exp_valid = 0;
+			target->exp_valid = 0;
+			sibling->exp_valid = 0;
+			gnode_set_exp(parent, proposal->xrate, proposal->yrate);
+			for(node = proposal->root; node != target; node = node->next) {
+				if(node == proposal->last) {
+					break;
+				}
+				(node->next)->order = node->order + 1;
+			}
+			break;
+		} else {
+			node = gnode_list_dequeue(&ival_list);
+			tail = gnode_list_get_tail(&ival_list);
+			if(tail->parent == node->parent) {
+				//TODO: some explanation here
+				gnode_list_dequeue(&ival_list);
+			}
+			//parent is guaranteed to exist since we would have merged the root otherwise.
+			gnode_list_enqueue(&ival_list, node->parent);
+			gnode_list_collate_head(&ival_list);
+		}
+
+		currT = nextT;
+
+	}
+
+	/***********************************************************/
+
+	gnode_list_destroy(&ival_list);
+
+	return(proposal);
 	
 }
 

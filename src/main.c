@@ -42,6 +42,7 @@ static struct argp_option options[] = {
     {"verbose", 'v', "LEVEL",  OPTION_ARG_OPTIONAL, "Set verbosity LEVEL" },
     {"quiet",   'q', 0, 0, "Produce minimal output" },
     {"gpu",     'g', 0, OPTION_HIDDEN, "use GPU for theta estimation"},
+	{"seed",	's', "INTEGER", OPTION_HIDDEN, "random number generator seed"},
     {"mpi",     'm', 0, OPTION_HIDDEN, "distribute processing using MPI"},
     {"threads", 'N', "INTEGER", OPTION_HIDDEN, "run INTEGER parallel threads"},
     {"numiter", 'n', "INTEGER", 0, "run INTEGER estimation iterations"},
@@ -72,6 +73,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         case 'n':
             arguments->niter = atoi(arg);
             break;
+        case 's':
+        	arguments->seed = atol(arg);
+        	break;
         case 't':
             arguments->init_theta = atof(arg);
             break;

@@ -29,6 +29,7 @@ struct mpcgs_opt_t {
     size_t nchain;
     size_t nburn;
     double init_theta;
+    long seed;
 }; 
 
 void mpcgs_estimate(struct mpcgs_opt_t *options);
