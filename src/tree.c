@@ -643,6 +643,14 @@ static void gnode_extract(struct gene_node *gnode)
 		//TODO handle error
 	}
 
+	if(gnode->tree->root == gnode) {
+		gnode->tree->root = gnode->next;
+	}
+
+	if(gnode->tree->last == gnode) {
+		gnode->tree->last = gnode->prev;
+	}
+
 	if(gnode->prev) {
 		gnode->prev->next = gnode->next;
 	}
@@ -767,7 +775,7 @@ static struct gene_tree *gtree_copy(struct gene_tree *gtree)
 	
 }
 
-strict void gtree_fixup_order(struct gene_tree *gtree, struct gene_node *stopat)
+static void gtree_fixup_order(struct gene_tree *gtree, struct gene_node *stopat)
 {
 
 	struct gene_node *node;
@@ -793,7 +801,6 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 	struct gene_node *target, *parent, *gparent, *newgparent, *node, *tail;
 	struct gene_node *child1, *child2, *oldsibling, *sibling, *newnode;
 	struct gene_node *ival_end;
-	struct gene_node newnode;
 	struct gnode_list ival_list;
 	float currT, nextT, eventT;
 	int i;
@@ -811,13 +818,7 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 		target++;
 	}
 	parent = target->parent;
-	/*
-	if(parent->child1 == target) {
-		parent->child1 = parent->child2;
-	}
-	parent->child2 = NULL;
-	target->parent = NULL;
-	*/
+
 	gnode_disconnect(target);
 	oldsibling = parent->child1;
 	
@@ -869,15 +870,6 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 			newnode = parent; //for clarity
 			gparent = parent->parent;
 			newgparent = sibling->parent;
-			/*
-			newnode.parent = sibling->parent;
-			newnode.child1 = sibling;
-			newnode.child2 = target;
-			newnode.prev = ival_end;
-			newnode.next = ival_end?ival_end->next:proposal->root;
-			newnode.time = currT + eventT;
-			newnode.exp_valid = 0;
-			*/
 
 			gnode_extract(parent);
 			gnode_insert_after(newnode, ival_end);
@@ -890,6 +882,7 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 				gnode_connect(sibling, newnode);
 			}
 
+			gnode_connect(target, newnode);
 			newnode->time = currT + eventT;
 			newnode->exp_valid = 0;
 			target->exp_valid = 0;
@@ -899,128 +892,15 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 			gnode_set_exp(parent, proposal->xrate, proposal->yrate);
 
 			break;
-/*
-			//Remove the parent from the linked list
-			if(parent->prev) {
-				parent->prev->next = parent->next;
-			}
-			if(parent->next) {
-				parent->next->prev = parent->prev;
-			}
 
-			//Insert the parent in its new linked list position
-			if(newnode.prev) {
-				(newnode.prev)->next = parent;
-			}
-			if(newnode.next) {
-				(newnode.next)->prev = parent;
-			}
-
-			//Rearrange surrounding topology, if necessary
-			if(parent != sibling->parent) {
-				//topology needs to change
-				if(parent->parent) {
-					if(parent->parent->child1 == parent) {
-						parent->parent->child1 = parent->child1;
-					} else {
-						parent->parent->child2 = parent->child1;
-					}
-					parent->child1->parent = parent->parent;
-				} else {
-					printf("Parent is root, but not a root merge...\n");
-				}
-				if(sibling->parent) {
-					if(sibling->parent->child1 == sibling->parent) {
-						sibling->parent->child1 = parent;
-					} else
-						subling->Parent->child2 = parent;
-					}
-				}
-				sibling->parent = parent;
-
-			}
-
-			*parent = newnode;
-*/
-/*
-			//TODO: refactor
-			//Create new coalescent
-
-			sibling = gnode_list_get_random(&ival_list, sfmt);
-
-			if(sibling == parent) {
-				sibling = parent->child1;
-			}
-			if(parent != sibling->parent) {
-				if(parent->parent) {
-					if((parent->parent)->child1 == parent) {
-						parent->parent->child1 = parent->child1;
-					} else {
-						parent->parent->child2 = parent->child1;
-					}
-				}
-				parent->parent = sibling->parent;
-				if(sibling->parent) {
-					if((sibling->parent)->child1 == sibling) {
-						(sibling->parent)->child1 = parent;
-					} else {
-						(sibling->parent)->child2 = parent;
-					}
-				}
-			}
-
-			parent->child1 = sibling;
-			parent->child2 = target;
-			target->parent = parent;
-			sibling->parent = parent;
-			if(parent->prev) {
-				(parent->prev)->next = parent->next;
-			}
-			if(parent->next) {
-				(parent->next)->prev = parent->prev;
-			} else {
-				//this node was last. This may be undone later.
-				proposal->last = parent->prev;
-			}
-			if(ival_end) {
-				parent->order = ival_end->order + 1; //fixup later
-				parent->next = ival_end->next;
-				ival_end->next = parent;
-				if(parent->next) {
-					(parent->next)->prev = parent;
-				}
-			} else {
-				parent->order = 0;
-				parent->prev = NULL;
-				parent->next = proposal->root;
-				(proposal->root)->prev = parent;
-				proposal->root = parent;
-			}
-			if(parent->next) {
-				(parent->next)->prev = parent;
-			} else {
-				proposal->last = parent;
-			}
-			parent->prev = ival_end;
-			parent->time = currT + eventT;
-			parent->exp_valid = 0;
-			target->exp_valid = 0;
-			sibling->exp_valid = 0;
-			for(node = proposal->root; node != target; node = node->next) {
-				if(node == proposal->last) {
-					break;
-				}
-				(node->next)->order = node->order + 1;
-			}
-			gnode_set_exp(parent, proposal->xrate, proposal->yrate);
-			break;
-		*/
 		} else {
 			node = gnode_list_dequeue(&ival_list);
-			tail = gnode_list_get_tail(&ival_list);
-			if(tail->parent == node->parent) {
-				//TODO: some explanation here
-				gnode_list_dequeue(&ival_list);
+			if(!gnode_list_empty(&ival_list)) {
+				tail = gnode_list_get_tail(&ival_list);
+				if(tail->parent == node->parent) {
+					//TODO: some explanation here
+					gnode_list_dequeue(&ival_list);
+				}
 			}
 			//parent is guaranteed to exist since we would have merged the root otherwise.
 			gnode_list_enqueue(&ival_list, node->parent);
