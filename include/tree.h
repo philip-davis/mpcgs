@@ -79,11 +79,24 @@ struct gnode_list {
 	int tail;
 };
 
+struct gtree_summary {
+	float *intervals;
+	size_t nintervals;
+};
+
+struct gtree_summary_set {
+	struct gtree_summary *summaries;
+	size_t nsummaries;
+};
+
 struct gene_tree *gtree_init(float theta, size_t ntips, sfmt_t *sfmt);
 void gtree_add_seqs_to_tips(struct gene_tree *gtree, struct ms_tab *mstab);
 void gtree_set_exp(struct gene_tree *gtree);
 void gtree_set_llhood(struct gene_tree *gtree);
 void gtree_print_newick(struct gene_tree *gtree);
 struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *sfmt);
+void gtree_digest(struct gene_tree *gtree, struct  gtree_summary *digest);
+void gtree_summary_set_create(struct gtree_summary_set *sum_set,
+							size_t count, size_t nintervals);
 
 #endif /* MPCGS_TREE_H */

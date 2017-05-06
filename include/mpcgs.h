@@ -22,6 +22,7 @@
 
 #include<stdlib.h>
 
+#include"tree.h"
 
 struct mpcgs_opt_t {
     char *gdatfile;
@@ -30,7 +31,19 @@ struct mpcgs_opt_t {
     size_t nburn;
     double init_theta;
     long seed;
-}; 
+};
+
+struct chain {
+	struct gene_tree *curr_tree;
+	float theta;
+	struct chain_param *param;
+};
+
+struct chain_param {
+	size_t nburnin;
+	size_t nsummaries;
+	size_t sum_freq;
+};
 
 void mpcgs_estimate(struct mpcgs_opt_t *options);
 

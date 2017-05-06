@@ -18,6 +18,7 @@
 */
 
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -29,6 +30,46 @@
 
 #include "SFMT.h"
 
+//float gradient_ascent()
+
+static float run_chain(struct chain *ch,
+						struct gtree_summary_set *summary_set,
+						sfmt_t *sfmt)
+{
+
+	struct gene_tree *next_tree;
+	struct chain_param *param;
+	struct gtree_summary *summary;
+	int total_steps;
+	float accept;
+	int i;
+
+	param = ch->param;
+	summary = summary_set->summaries;
+	total_steps = param->nburnin + (param->nsummaries * param->sum_freq);
+	for(i = 0; i < total_steps; i++) {
+
+		next_tree = gtree_propose(ch->curr_tree, ch->theta, sfmt);
+		gtree_set_llhood(next_tree);
+
+		if(next_tree->llhood > ch->curr_tree->llhood) {
+			ch->curr_tree = next_tree;
+		} else {
+			accept = exp(next_tree->llhood - ch->curr_tree->llhood);
+			if(sfmt_genrand_real2(sfmt) < accept) {
+				ch->curr_tree = next_tree;
+			}
+		}
+
+		if((i % param->sum_freq) == 0 && i > param->nburnin) {
+			gtree_digest(ch->curr_tree, summary);
+			summary++;
+		}
+
+	}
+
+}
+
 void mpcgs_estimate(struct mpcgs_opt_t *options)
 {
 
@@ -36,8 +77,11 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	unsigned long seed;
 	sfmt_t sfmt;
     struct ms_tab *data;
-	struct gene_tree *curr_tree, *next_tree;
-	float theta;
+	struct gene_tree *curr_tree;
+	float drv_theta;
+	struct gtree_summary_set summary_set;
+	struct chain_param small_chain_param, big_chain_param;
+	struct chain ch;
     int i, err;
 
     const char *err_name = "estimating theta";
@@ -58,9 +102,14 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	log_debug("rseed = %li\n", seed);
 	sfmt_init_gen_rand(&sfmt, seed);
 	
-	theta = options->init_theta;
+	small_chain_param.nburnin = big_chain_param.nburnin = 1000;
+	small_chain_param.nsummaries = 500;
+	big_chain_param.nsummaries = 10000;
+	small_chain_param.sum_freq = big_chain_param.sum_freq = 20;
+
+	drv_theta = options->init_theta;
     data = init_ms_tab(options->gdatfile);
-    curr_tree = gtree_init(theta, data->len, &sfmt);
+    curr_tree = gtree_init(drv_theta, data->len, &sfmt);
 	gtree_add_seqs_to_tips(curr_tree, data);
 	gtree_set_exp(curr_tree);
 	gtree_print_newick(curr_tree);
@@ -68,24 +117,26 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	log_debug("init tree root time: %f\n", curr_tree->root->time);
 	log_debug("init tree log likelihood: %f\n", curr_tree->llhood);
 	
-	next_tree = gtree_propose(curr_tree, theta, &sfmt);
-	gtree_print_newick(next_tree);
-	gtree_set_llhood(next_tree);
-	log_debug("propose tree root time: %f\n", next_tree->root->time);
-	log_debug("propose tree log likelihood: %f\n", next_tree->llhood);
-	
+
+	gtree_summary_set_create(&summary_set, big_chain_param.nsummaries, curr_tree->nnodes);
+	ch.curr_tree = curr_tree;
+	ch.theta = drv_theta;
+	ch.param = &small_chain_param;
+
+
+	run_chain(&ch, &summary_set, &sfmt);
 
 
     //init tree
 
-    for(i = 0; i < options->nchain; i++) {
+
         //do burnin
 
         //do chain
 
         //do gradient ascent
 
-    }  
+
 
 	//TODO: free tree
 	

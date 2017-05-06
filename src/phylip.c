@@ -49,7 +49,8 @@ struct ms_tab *init_ms_tab(const char *filename)
 
     FILE *gendatf;
     struct ms_tab *mstab;
-    size_t nseq, seq_len, nread;
+    size_t nseq, seq_len;
+    int nread;
     struct mol_seq *mseq;
     char scanstr[100];
     char *tmp_buf = NULL;

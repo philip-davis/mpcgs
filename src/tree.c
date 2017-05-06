@@ -35,6 +35,9 @@ static void gnode_list_create(size_t list_size, struct gnode_list *list)
 	}
 	
 	list->gnodes = calloc(list_size, sizeof(*list->gnodes));
+	if(!list->gnodes) {
+		//TODO: handle error
+	}
 	list->head = 0;
 	list->tail = 0;
 	
@@ -243,7 +246,7 @@ errout:
 	
 }
 
-static void add_child(struct gene_node *parent, struct gene_node *child) {
+static void gnode_add_child(struct gene_node *parent, struct gene_node *child) {
 	
 	if(!parent || !child) {
 		//TODO: handle error
@@ -294,8 +297,8 @@ static void gtree_simulate_tree(struct gene_tree *gtree, float theta, sfmt_t *sf
 		if(child1 <= child2) {
 			child2++;
 		}
-		add_child(node, *child1);
-		add_child(node, *child2);
+		gnode_add_child(node, *child1);
+		gnode_add_child(node, *child2);
 		if(child1 < child2) {
 			*child1 = node;
 			*child2 = branches[nbranch-1];
@@ -773,6 +776,8 @@ static struct gene_tree *gtree_copy(struct gene_tree *gtree)
 	newtree->nodes = newnodes;
 	newtree->tips = &newnodes[gtree->nnodes];
 	
+	return(newtree);
+
 }
 
 static void gtree_fixup_order(struct gene_tree *gtree, struct gene_node *stopat)
@@ -803,7 +808,6 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 	struct gene_node *ival_end;
 	struct gnode_list ival_list;
 	float currT, nextT, eventT;
-	int i;
 	
 	if(!current || !sfmt) {
 		//TODO: handle error
@@ -871,8 +875,10 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 			gparent = parent->parent;
 			newgparent = sibling->parent;
 
-			gnode_extract(parent);
-			gnode_insert_after(newnode, ival_end);
+			if(parent != ival_end) {
+				gnode_extract(parent);
+				gnode_insert_after(newnode, ival_end);
+			}
 			if(parent != sibling->parent) {
 				gnode_disconnect(oldsibling);
 				gnode_disconnect(parent);
@@ -917,6 +923,58 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 
 	return(proposal);
 	
+}
+
+void gtree_digest(struct gene_tree *gtree, struct gtree_summary *digest)
+{
+
+	struct gene_node *node;
+	float *ival;
+
+	if(!gtree) {
+		//TODO: handle error
+	}
+
+	if(digest->nintervals != gtree->nnodes) {
+		//TODO: handle error
+	}
+
+	ival = digest->intervals;
+	for(node = gtree->root; node; node = node->next) {
+		*ival = node->next?(node->time - node->next->time):node->time;
+		ival++;
+	}
+
+}
+
+void gtree_summary_set_create(struct gtree_summary_set *sum_set,
+							size_t count, size_t nintervals)
+{
+
+	int i;
+	struct gtree_summary *summary;
+
+
+	if(!sum_set) {
+		//TODO: handle error
+	}
+
+	sum_set->nsummaries = count;
+	sum_set->summaries = malloc(count * sizeof(*sum_set->summaries));
+	if(!sum_set->summaries) {
+		//TODO: handle error
+	}
+
+	summary = sum_set->summaries;
+	for(i = 0; i < count; i++) {
+		 summary->nintervals = nintervals;
+		 summary->intervals = malloc(nintervals * sizeof(*summary->intervals));
+		 if(!summary->intervals) {
+			 //TODO: handle error
+		 }
+		 summary++;
+	}
+
 }
 
 static void gnode_print_newick(struct gene_node *gnode)

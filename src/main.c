@@ -58,7 +58,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
 
     struct mpcgs_opt_t *arguments = state->input;
-    static unsigned int optflags = 0;
 
     switch(key) {
         case 'b':
