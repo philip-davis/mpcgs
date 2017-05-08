@@ -486,6 +486,9 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 		if(cllike[i] > -FLT_MAX) {
 			sumAllfact += exp((lfreq[i] + cllike[i]) - normal);
 		}
+		if(errno == ERANGE) {
+				printf("WARNING: an overflow error occurred.\n");
+		}
 	}
 	if(sumAllfact <= 0.0 || errno) {
 		err_debug("Intermediate sumAllfact is invalid.\n");
@@ -498,9 +501,15 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 	sumPur = 0;
 	if(cllike[DNA_A] > -FLT_MAX) {
 		sumPur += exp((lfreq[FREQ_AR] + cllike[DNA_A]) - normal);
+		if(errno == ERANGE) {
+				printf("WARNING: an overflow error occurred.\n");
+		}
 	}
 	if(cllike[DNA_G] > -FLT_MAX) {
 		sumPur += exp((lfreq[FREQ_GR] + cllike[DNA_G]) - normal);
+		if(errno == ERANGE) {
+				printf("WARNING: an overflow error occurred.\n");
+		}
 	}
 	if(sumPur < 0 || errno) {
 		err_debug("Intermediate sumPur is invalid.\n");
@@ -518,9 +527,15 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 	sumPyr = 0;
 	if(cllike[DNA_C] > -FLT_MAX) {
 		sumPyr += exp((lfreq[FREQ_CY] + cllike[DNA_C]) - normal);
+		if(errno == ERANGE) {
+				printf("WARNING: an overflow error occurred.\n");
+			}
 	}
 	if(cllike[DNA_T] > -FLT_MAX) {
 		sumPyr += exp((lfreq[FREQ_TY] + cllike[DNA_T]) - normal);
+		if(errno == ERANGE) {
+				printf("WARNING: an overflow error occurred.\n");
+			}
 	}
 	
 	if(sumPyr < 0.0 || errno) {
@@ -543,7 +558,7 @@ static void gnode_get_llhood_lcomps(struct gene_node *gnode, float *cllike,
 
 		comp = exp(lsumAll - normal);
 		comp += exp((gnode->lexpB + cllike[i]) - normal);
-		comp += exp((gnode->lexpC + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - 			normal);
+		comp += exp((gnode->lexpC + ((i==DNA_A||i==DNA_G)?lsumPur:lsumPyr)) - normal);
 		lcomps[i] = log(comp) + normal;
 		//log_debug("comp[%i] = %f, lcomps[%i] = %f\n", i, comp, i, lcomps[i]);
 	}
@@ -705,7 +720,7 @@ void gtree_set_llhood(struct gene_tree *gtree)
 	
 	mstab = gtree->mstab;
 	llhood = 0;
-	
+
 	for(i = 0; i < mstab->seq_len; i++) {
 		lhood = 0;
 		normal = -FLT_MAX;
@@ -717,10 +732,8 @@ void gtree_set_llhood(struct gene_tree *gtree)
 		for(j = 0; j < 4; j++) {
 			lhood += exp((pos_llhood_vals[j] + gtree->lfreq[j]) - normal);
 		}
-		//printf("%f,", log(lhood) + normal);
 		llhood += log(lhood) + normal;
 	}
-	//printf("\n");
 	gtree->llhood = llhood;
 	
 }
@@ -959,7 +972,8 @@ void gtree_summary_set_create(struct gtree_summary_set *sum_set,
 		//TODO: handle error
 	}
 
-	sum_set->nsummaries = count;
+	sum_set->nsummaries = 0;
+	sum_set->szintervals = count;
 	sum_set->summaries = malloc(count * sizeof(*sum_set->summaries));
 	if(!sum_set->summaries) {
 		//TODO: handle error
@@ -973,6 +987,115 @@ void gtree_summary_set_create(struct gtree_summary_set *sum_set,
 			 //TODO: handle error
 		 }
 		 summary++;
+	}
+
+}
+
+static float summary_calc_lposterior(struct gtree_summary *sum, float theta)
+{
+
+	int i;
+	int lineages;
+	float exp1, coeff;
+
+	if(!sum) {
+		//TODO: handle error
+	}
+
+	if(theta <= 0.0) {
+		//TODO: handle error
+	}
+
+	exp1 = 0;
+	for(i = 0; i < sum->nintervals; i++) {
+		lineages = i + 2;
+		exp1 += -(float)(lineages * (lineages - 1 )) * sum->intervals[i];
+	}
+	coeff = (float)(lineages - 1) * logf(2.0/theta);
+
+	return(coeff + (exp1 / theta));
+
+}
+
+void gtree_summary_set_base_lposteriors(struct gtree_summary_set *sum_set, float drv_theta)
+{
+
+	struct gtree_summary *summary;
+	int i;
+
+	if(!sum_set) {
+		//TODO: handle error
+	}
+
+	if(drv_theta <= 0.0) {
+		//TODO: handle error
+	}
+
+	summary = sum_set->summaries;
+	for(i = 0; i < sum_set->nsummaries; i++) {
+		summary->ldrv_posterior = summary_calc_lposterior(summary, drv_theta);
+		summary++;
+
+	}
+
+}
+
+float gtree_summary_set_llkhood(struct gtree_summary_set *summary_set, float theta)
+{
+
+	struct gtree_summary *summary;
+	float lkhood = 0;
+	float normal;
+	int i;
+
+	if(!summary_set) {
+		//TODO: handle error
+	}
+
+	if(theta <= 0.0) {
+		//TODO: handle error
+	}
+
+	normal = -FLT_MAX;
+
+	summary = summary_set->summaries;
+
+	//calculate posterior for each summary tree
+	for(i = 0; i < summary_set->nsummaries; i++) {
+		summary->ltmp_lkhood_comp = summary_calc_lposterior(summary, theta) - summary->ldrv_posterior;
+		if(summary->ltmp_lkhood_comp > normal) {
+			normal = summary->ltmp_lkhood_comp;
+		}
+		summary++;
+	}
+
+	summary = summary_set->summaries;
+	for(i = 0; i < summary_set->nsummaries; i++) {
+		lkhood += exp(summary->ltmp_lkhood_comp - normal);
+		summary++;
+	}
+
+	return(log(lkhood) + normal);
+
+}
+
+void gtree_summary_set_print_lkhoods(struct gtree_summary_set *summary_set,
+									float start, float stop, float incr)
+{
+
+	float theta, llkhood;
+
+	if(!summary_set) {
+		//TODO: handle error
+	}
+
+	if(start <= 0.0) {
+		//TODO: handle error
+	}
+
+	for(theta = start; theta <= stop; theta += incr) {
+		llkhood = gtree_summary_set_llkhood(summary_set, theta);
+		printf("%f,%f\n", theta, llkhood);
 	}
 
 }

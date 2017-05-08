@@ -82,11 +82,14 @@ struct gnode_list {
 struct gtree_summary {
 	float *intervals;
 	size_t nintervals;
+	float ldrv_posterior;
+	float ltmp_lkhood_comp;
 };
 
 struct gtree_summary_set {
 	struct gtree_summary *summaries;
 	size_t nsummaries;
+	size_t szintervals;
 };
 
 struct gene_tree *gtree_init(float theta, size_t ntips, sfmt_t *sfmt);
@@ -98,5 +101,9 @@ struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *
 void gtree_digest(struct gene_tree *gtree, struct  gtree_summary *digest);
 void gtree_summary_set_create(struct gtree_summary_set *sum_set,
 							size_t count, size_t nintervals);
+void gtree_summary_set_base_lposteriors(struct gtree_summary_set *sum_set, float drv_theta);
+float gtree_summary_set_llkhood(struct gtree_summary_set *summary_set, float theta);
+void gtree_summary_set_print_lkhoods(struct gtree_summary_set *summary_set,
+									float start, float stop, float incr);
 
 #endif /* MPCGS_TREE_H */

@@ -18,6 +18,7 @@
 */
 
 #include <errno.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +31,95 @@
 
 #include "SFMT.h"
 
-//float gradient_ascent()
+static float lkhood_gradient_ascent_step(struct gtree_summary_set *summary_set, float theta)
+{
+
+	float thetalow, thetahigh, thetanext;
+	float llkhoodlow, llkhood, llkhoodhigh, llkhoodnext;
+	float half_diff, half_sum, lndiff, lslope, jump;
+	if(!summary_set) {
+		//TODO: handle error
+	}
+
+	if(theta <= 0.0) {
+		//TODO: handle error
+	}
+
+	thetalow = theta - (2 * DELTA);
+	thetahigh = theta + (2 * DELTA);
+
+	llkhoodlow = gtree_summary_set_llkhood(summary_set, thetalow);
+	llkhood = gtree_summary_set_llkhood(summary_set, theta);
+	llkhoodhigh = gtree_summary_set_llkhood(summary_set, thetahigh);
+
+	half_diff = (llkhoodhigh - llkhoodlow) / 2.0;
+	half_sum = (llkhoodhigh + llkhoodlow) / 2.0;
+
+	errno = 0;
+	if(half_diff > 0.0) {
+		lslope = log(exp(half_diff) - exp(-half_diff)) + half_sum - LN4DELTA;
+		jump = exp(lslope);
+	} else if(half_diff < 0.0) {
+		lslope = log(exp(-half_diff) - exp(half_diff)) + half_sum - LN4DELTA;
+		jump = -exp(lslope);
+	} else {
+		//Curve is flat...gradient ascent is either done or will fail.
+		return(theta);
+	}
+
+	if(errno == ERANGE) {
+		printf("WARNING: an overflow error occurred.\n");
+	}
+
+	lndiff = FLT_MAX;
+	do {
+		jump = fmin(MAXJUMP, jump);
+		jump /= 2.0;
+		thetanext = theta + jump;
+		if(thetanext <= 0.0) {
+			continue;
+		}
+		llkhoodnext = gtree_summary_set_llkhood(summary_set, thetanext);
+		if(llkhoodnext >= llkhood) {
+			break;
+		}
+		half_diff = (llkhood - llkhoodnext) / 2.0;
+		half_sum = (llkhood + llkhoodnext) / 2.0;
+		lndiff = log(exp(half_diff) - exp(-half_diff)) + half_sum;
+	}while(lndiff > LNDELTA);
+
+	return(thetanext);
+
+}
+
+static float lkhood_by_gradient_ascent(struct gtree_summary_set *summary_set, float drv_theta)
+{
+
+	float thn, thnext;
+	int iteration;
+
+	if(!summary_set) {
+		//TODO: handle error
+	}
+
+	if(drv_theta <= 0.0) {
+		//TODO: handle error
+	}
+
+	gtree_summary_set_base_lposteriors(summary_set, drv_theta);
+
+	thnext = drv_theta;
+	iteration = 0;
+	do{
+
+		thn = thnext;
+		thnext = lkhood_gradient_ascent_step(summary_set, thn);
+		iteration++;
+	}while((fabs(thnext - thn) > EPSILON && (iteration < MAXITER)));
+
+	return(thnext);
+
+}
 
 static float run_chain(struct chain *ch,
 						struct gtree_summary_set *summary_set,
@@ -42,7 +131,12 @@ static float run_chain(struct chain *ch,
 	struct gtree_summary *summary;
 	int total_steps;
 	float accept;
+	float estimate;
 	int i;
+
+	if(!ch || !summary_set || !sfmt) {
+		//TODO: handle error
+	}
 
 	param = ch->param;
 	summary = summary_set->summaries;
@@ -63,10 +157,16 @@ static float run_chain(struct chain *ch,
 
 		if((i % param->sum_freq) == 0 && i > param->nburnin) {
 			gtree_digest(ch->curr_tree, summary);
+			//TODO: encapsulate summary set operations:
 			summary++;
+			summary_set->nsummaries++;
 		}
 
 	}
+
+	estimate = lkhood_by_gradient_ascent(summary_set, ch->theta);
+	summary_set->nsummaries = 0;
+	return(estimate);
 
 }
 
@@ -78,7 +178,7 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	sfmt_t sfmt;
     struct ms_tab *data;
 	struct gene_tree *curr_tree;
-	float drv_theta;
+	float drv_theta, theta;
 	struct gtree_summary_set summary_set;
 	struct chain_param small_chain_param, big_chain_param;
 	struct chain ch;
@@ -124,19 +224,17 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	ch.param = &small_chain_param;
 
 
-	run_chain(&ch, &summary_set, &sfmt);
+	for(i = 0; i < 10; i++) {
+		theta = run_chain(&ch, &summary_set, &sfmt);
+		ch.theta = theta;
+		printf("Theta estimate after iteration %i: %f\n", (i+1), theta);
+	}
 
-
-    //init tree
-
-
-        //do burnin
-
-        //do chain
-
-        //do gradient ascent
-
-
+	ch.param = &big_chain_param;
+	for(i = 0; i < 2; i++) {
+		theta = run_chain(&ch, &summary_set, &sfmt);
+		printf("Theta estimate after long iteration %i: %f\n", (i+1), theta);
+	}
 
 	//TODO: free tree
 	

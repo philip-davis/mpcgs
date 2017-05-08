@@ -24,6 +24,13 @@
 
 #include"tree.h"
 
+#define EPSILON .0005
+#define MAXITER 1000
+#define DELTA 2.2204460492503131e-6
+#define LNDELTA -13.0178024591766992
+#define LN4DELTA -11.6315080980568086
+#define MAXJUMP 20.0
+
 struct mpcgs_opt_t {
     char *gdatfile;
     size_t niter;
