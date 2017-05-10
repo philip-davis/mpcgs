@@ -40,16 +40,29 @@ struct mpcgs_opt_t {
     long seed;
 };
 
-struct chain {
-	struct gene_tree *curr_tree;
-	float theta;
-	struct chain_param *param;
-};
-
 struct chain_param {
 	size_t nburnin;
 	size_t nsummaries;
 	size_t sum_freq;
+};
+
+struct mp_param {
+	size_t nproposals;
+	size_t nsamples;
+};
+
+struct multi_proposal {
+	struct mp_param mparam;
+	struct gene_tree *proposals;
+	float *trans_mtx;
+	unsigned int curr_idx;
+};
+
+struct chain {
+	float theta;
+	struct chain_param cparam;
+	struct multi_proposal mp;
+	struct gtree_summary_set sum_set;
 };
 
 void mpcgs_estimate(struct mpcgs_opt_t *options);

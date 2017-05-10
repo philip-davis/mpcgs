@@ -92,12 +92,14 @@ struct gtree_summary_set {
 	size_t szintervals;
 };
 
-struct gene_tree *gtree_init(float theta, size_t ntips, sfmt_t *sfmt);
+//TODO: unify formatting of parameters (newlines)
+void gtree_init(float theta, size_t ntips, struct gene_tree *gtree, sfmt_t *sfmt);
 void gtree_add_seqs_to_tips(struct gene_tree *gtree, struct ms_tab *mstab);
 void gtree_set_exp(struct gene_tree *gtree);
 void gtree_set_llhood(struct gene_tree *gtree);
 void gtree_print_newick(struct gene_tree *gtree);
 struct gene_tree *gtree_propose(struct gene_tree *current, float theta, sfmt_t *sfmt);
+struct gene_tree *gtree_propose_fixed_target(struct gene_tree *current, struct gene_tree *proposal, float theta, unsigned int tgtidx, sfmt_t *sfmt);
 void gtree_digest(struct gene_tree *gtree, struct  gtree_summary *digest);
 void gtree_summary_set_create(struct gtree_summary_set *sum_set,
 							size_t count, size_t nintervals);

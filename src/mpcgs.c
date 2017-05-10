@@ -121,51 +121,98 @@ static float lkhood_by_gradient_ascent(struct gtree_summary_set *summary_set, fl
 
 }
 
-static float run_chain(struct chain *ch,
-						struct gtree_summary_set *summary_set,
-						sfmt_t *sfmt)
+static void do_multi_proposal(struct chain *ch, unsigned int sampling, sfmt_t *sfmt)
 {
 
-	struct gene_tree *next_tree;
-	struct chain_param *param;
+	struct chain_param *cparam;
+	struct mp_param *mparam;
+	struct gene_tree *curr_tree, *proposal;
 	struct gtree_summary *summary;
-	int total_steps;
-	float accept;
-	float estimate;
+	struct gtree_summary_set *sum_set;
+	unsigned int tgtidx;
+	float llhood_sum;
 	int i;
 
-	if(!ch || !summary_set || !sfmt) {
+	if(!ch || !sfmt) {
 		//TODO: handle error
 	}
 
-	param = ch->param;
-	summary = summary_set->summaries;
-	total_steps = param->nburnin + (param->nsummaries * param->sum_freq);
-	for(i = 0; i < total_steps; i++) {
+	cparam = &ch->cparam;
+	mparam = &ch->mp.mparam;
 
-		next_tree = gtree_propose(ch->curr_tree, ch->theta, sfmt);
+	sum_set = &ch->sum_set;
+	summary = &sum_set->summaries[sum_set->nsummaries];
+	curr_tree = &ch->mp.proposals[ch->mp.curr_idx];
+	//TODO: move to small function
+	tgtidx = sfmt_genrand_uint32(sfmt) % ((curr_tree->nnodes + curr_tree->ntips) - 1);
+	if(tgtidx == curr_tree->root->idx) {
+		tgtidx++;
+	}
+	proposal = ch->mp.proposals;
+	llhood_sum = 0;
+	for(i = 0; i < mparam->nproposals; i++) {
+		if(i != ch->mp.curr_idx) {
+			gtree_propose_fixed_target(curr_tree, proposal, ch->theta, tgtidx, sfmt);
+			gtree_set_llhood(proposal);
+			llhood_sum += proposal->llhood;
+		}
+		proposal++;
+	}
+
+	//for(i = 1; i < )
+
+}
+
+static float run_chain(struct chain *ch, sfmt_t *sfmt)
+{
+
+	struct gene_tree *next_tree;
+	struct chain_param *cparam;
+	struct gtree_summary *summary;
+	struct gene_tree *curr_tree;
+	int total_steps;
+	float accept;
+	float estimate;
+	unsigned tgtidx;
+	int i;
+
+	if(!ch || !sfmt) {
+		//TODO: handle error
+	}
+
+	cparam = &ch->cparam;
+	summary = ch->sum_set.summaries;
+	total_steps = cparam->nburnin + (cparam->nsummaries * cparam->sum_freq);
+	curr_tree = &ch->mp.proposals[ch->mp.curr_idx];
+	for(i = 0; i < total_steps; i++) {
+		tgtidx = sfmt_genrand_uint32(sfmt) % ((curr_tree->nnodes + curr_tree->ntips) - 1);
+		if(tgtidx == curr_tree->root->idx) {
+			tgtidx++;
+		}
+		next_tree = malloc(sizeof(*next_tree));
+		gtree_propose_fixed_target(curr_tree, next_tree, ch->theta, tgtidx, sfmt);
 		gtree_set_llhood(next_tree);
 
-		if(next_tree->llhood > ch->curr_tree->llhood) {
-			ch->curr_tree = next_tree;
+		if(next_tree->llhood > curr_tree->llhood) {
+			curr_tree = next_tree;
 		} else {
-			accept = exp(next_tree->llhood - ch->curr_tree->llhood);
+			accept = exp(next_tree->llhood - curr_tree->llhood);
 			if(sfmt_genrand_real2(sfmt) < accept) {
-				ch->curr_tree = next_tree;
+				curr_tree = next_tree;
 			}
 		}
 
-		if((i % param->sum_freq) == 0 && i > param->nburnin) {
-			gtree_digest(ch->curr_tree, summary);
+		if((i % cparam->sum_freq) == 0 && i > cparam->nburnin) {
+			gtree_digest(curr_tree, summary);
 			//TODO: encapsulate summary set operations:
 			summary++;
-			summary_set->nsummaries++;
+			ch->sum_set.nsummaries++;
 		}
 
 	}
 
-	estimate = lkhood_by_gradient_ascent(summary_set, ch->theta);
-	summary_set->nsummaries = 0;
+	estimate = lkhood_by_gradient_ascent(&ch->sum_set, ch->theta);
+	ch->sum_set.nsummaries = 0;
 	return(estimate);
 
 }
@@ -177,9 +224,8 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	unsigned long seed;
 	sfmt_t sfmt;
     struct ms_tab *data;
-	struct gene_tree *curr_tree;
-	float drv_theta, theta;
-	struct gtree_summary_set summary_set;
+	struct gene_tree *init_tree;
+	unsigned int nmpproposals;
 	struct chain_param small_chain_param, big_chain_param;
 	struct chain ch;
     int i, err;
@@ -202,38 +248,45 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 	log_debug("rseed = %li\n", seed);
 	sfmt_init_gen_rand(&sfmt, seed);
 	
+
 	small_chain_param.nburnin = big_chain_param.nburnin = 1000;
 	small_chain_param.nsummaries = 500;
 	big_chain_param.nsummaries = 10000;
 	small_chain_param.sum_freq = big_chain_param.sum_freq = 20;
 
-	drv_theta = options->init_theta;
+	//TODO: move this to an init function
+	ch.theta = options->init_theta;
+	ch.cparam = small_chain_param;
+	nmpproposals = 100;
+	ch.mp.mparam.nproposals = nmpproposals;
+	ch.mp.mparam.nsamples = nmpproposals;
+	ch.mp.curr_idx = 0;
+	ch.mp.proposals = malloc(nmpproposals * sizeof(ch.mp.proposals));
+	ch.mp.trans_mtx = malloc(nmpproposals * nmpproposals * sizeof(*ch.mp.trans_mtx));
+
+	init_tree = &ch.mp.proposals[ch.mp.curr_idx];
+
+
     data = init_ms_tab(options->gdatfile);
-    curr_tree = gtree_init(drv_theta, data->len, &sfmt);
-	gtree_add_seqs_to_tips(curr_tree, data);
-	gtree_set_exp(curr_tree);
-	gtree_print_newick(curr_tree);
-	gtree_set_llhood(curr_tree);
-	log_debug("init tree root time: %f\n", curr_tree->root->time);
-	log_debug("init tree log likelihood: %f\n", curr_tree->llhood);
+    gtree_init(ch.theta, data->len, init_tree, &sfmt);
+	gtree_add_seqs_to_tips(init_tree, data);
+	gtree_set_exp(init_tree);
+	gtree_print_newick(init_tree);
+	gtree_set_llhood(init_tree);
+	log_debug("init tree root time: %f\n", init_tree->root->time);
+	log_debug("init tree log likelihood: %f\n", init_tree->llhood);
 	
-
-	gtree_summary_set_create(&summary_set, big_chain_param.nsummaries, curr_tree->nnodes);
-	ch.curr_tree = curr_tree;
-	ch.theta = drv_theta;
-	ch.param = &small_chain_param;
-
+	gtree_summary_set_create(&ch.sum_set, big_chain_param.nsummaries, init_tree->nnodes);
 
 	for(i = 0; i < 10; i++) {
-		theta = run_chain(&ch, &summary_set, &sfmt);
-		ch.theta = theta;
-		printf("Theta estimate after iteration %i: %f\n", (i+1), theta);
+		ch.theta = run_chain(&ch, &sfmt);
+		printf("Theta estimate after iteration %i: %f\n", (i+1), ch.theta);
 	}
 
-	ch.param = &big_chain_param;
+	ch.cparam = big_chain_param;
 	for(i = 0; i < 2; i++) {
-		theta = run_chain(&ch, &summary_set, &sfmt);
-		printf("Theta estimate after long iteration %i: %f\n", (i+1), theta);
+		ch.theta = run_chain(&ch, &sfmt);
+		printf("Theta estimate after long iteration %i: %f\n", (i+1), ch.theta);
 	}
 
 	//TODO: free tree
