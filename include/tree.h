@@ -107,5 +107,6 @@ void gtree_summary_set_base_lposteriors(struct gtree_summary_set *sum_set, float
 float gtree_summary_set_llkhood(struct gtree_summary_set *summary_set, float theta);
 void gtree_summary_set_print_lkhoods(struct gtree_summary_set *summary_set,
 									float start, float stop, float incr);
+size_t weighted_pick(float *dist, size_t num_picks, float sum_dist, float randf);
 
 #endif /* MPCGS_TREE_H */

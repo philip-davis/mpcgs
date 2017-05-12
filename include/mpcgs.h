@@ -48,11 +48,12 @@ struct chain_param {
 
 struct mp_param {
 	size_t nproposals;
-	size_t nsamples;
+	size_t npicks;
+	unsigned sampling;
 };
 
 struct multi_proposal {
-	struct mp_param mparam;
+	struct mp_param *mparam;
 	struct gene_tree *proposals;
 	float *trans_mtx;
 	unsigned int curr_idx;
@@ -60,7 +61,7 @@ struct multi_proposal {
 
 struct chain {
 	float theta;
-	struct chain_param cparam;
+	struct chain_param *cparam;
 	struct multi_proposal mp;
 	struct gtree_summary_set sum_set;
 };

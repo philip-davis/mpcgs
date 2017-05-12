@@ -1,0 +1,10 @@
+---
+BasedOnStyle: Mozilla
+IndentWidth: 4
+---
+Language: Cpp
+DerivePointerAlignment: true
+AllowShortBlocksOnASingleLine: true
+AlwaysBreakAfterReturnType: None
+AlwaysBreakAfterDefinitionReturnType: None
+---

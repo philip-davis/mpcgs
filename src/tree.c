@@ -1303,3 +1303,30 @@ void gtree_print_newick(struct gene_tree *gtree)
 	gnode_print_newick(gtree->root);
 	
 }
+
+size_t weighted_pick(float *dist, size_t size_dist, float sum_dist, float randf)
+{
+
+	float threshold;
+	int i;
+
+	threshold = (1.0 - randf) * sum_dist;
+	for(i = 0; i < size_dist; i++) {
+		if(dist[i] > threshold) {
+			return(i);
+		}
+		threshold -= dist[i];
+	}
+
+	//Rounding error (probably). Pick the first non-zero entry
+	for(i = 0; i < size_dist; i++) {
+		if(dist[i] > 0.0) {
+			return(i);
+		}
+	}
+
+	//all zero. Return last
+	return(size_dist - 1);
+
+}
+
