@@ -15,34 +15,39 @@
     along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include<errno.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "phylip.h"
 #include "debug.h"
+#include "phylip.h"
 
 #define MPCGS_EBADFORMAT 201
 
-//TODO expand supported molecules
+// TODO expand supported molecules
 static enum mol_t char_to_mol(char c, enum mol_cat mcat)
 {
 
-    if(mcat == MOL_DNA) {
-        switch(c) {
-            case 'A': return DNA_A;
-            case 'C': return DNA_C;
-            case 'G': return DNA_G;
-            case 'T': return DNA_T;
-            default:  return MOL_INVALID;
+    if (mcat == MOL_DNA) {
+        switch (c) {
+            case 'A':
+                return DNA_A;
+            case 'C':
+                return DNA_C;
+            case 'G':
+                return DNA_G;
+            case 'T':
+                return DNA_T;
+            default:
+                return MOL_INVALID;
         }
     } else {
         return MOL_INVALID;
     }
 }
 
-//TODO refactor
+// TODO refactor
 
 struct ms_tab *init_ms_tab(const char *filename)
 {
@@ -55,13 +60,13 @@ struct ms_tab *init_ms_tab(const char *filename)
     char scanstr[100];
     char *tmp_buf = NULL;
     int i, count;
- 
+
     debug_var_decl("reading sequence data");
 
-	param_chk(filename, errout);
+    param_chk(filename, errout);
 
     gendatf = fopen(filename, "r");
-    if(!gendatf) {
+    if (!gendatf) {
         err = errno;
         err_str = strerror(err);
         goto errout;
@@ -73,15 +78,15 @@ struct ms_tab *init_ms_tab(const char *filename)
     alloc_chk(mstab, errclose);
 
     count = fscanf(gendatf, "%zi %zi ", &nseq, &seq_len);
-    if(count != PHY_N_HDR_ATTR) {
+    if (count != PHY_N_HDR_ATTR) {
         err = -MPCGS_EBADFORMAT;
         err_str = "bad file format";
         goto errfree;
     }
     log_debug("nseq = %zi, seqlen = %zi\n", nseq, seq_len);
-    
+
     mstab->len = nseq;
-	mstab->seq_len = seq_len;
+    mstab->seq_len = seq_len;
     sprintf(scanstr, "%%10c%%%zic%%n ", seq_len);
     mstab->mseq = malloc(sizeof(*(mstab->mseq)) * mstab->len);
     alloc_chk(mstab->mseq, errfree);
@@ -89,21 +94,21 @@ struct ms_tab *init_ms_tab(const char *filename)
     tmp_buf = malloc(sizeof(*tmp_buf) * seq_len);
     alloc_chk(tmp_buf, errfree);
 
-    for(mseq = mstab->mseq; mseq < (mstab->mseq + mstab->len); mseq++) {
+    for (mseq = mstab->mseq; mseq < (mstab->mseq + mstab->len); mseq++) {
         mseq->len = seq_len;
         count = fscanf(gendatf, scanstr, mseq->name, tmp_buf, &nread);
-        if(count != PHY_N_SEQ_FIELD || nread != (mseq->len + PHY_NAME_LEN)) {
+        if (count != PHY_N_SEQ_FIELD || nread != (mseq->len + PHY_NAME_LEN)) {
             err = -MPCGS_EBADFORMAT;
             err_str = "bad file format";
             goto errfree;
-        } 
+        }
         mseq->name[PHY_NAME_LEN] = '\0';
 
         mseq->seq = malloc(sizeof(*(mseq->seq)) * mseq->len);
         alloc_chk(mseq->seq, errfree);
-        for(i = 0; i < mseq->len; i++) {
+        for (i = 0; i < mseq->len; i++) {
             mseq->seq[i] = char_to_mol(tmp_buf[i], MOL_DNA);
-            if(mseq->seq[i] == MOL_INVALID) {
+            if (mseq->seq[i] == MOL_INVALID) {
                 err = -MPCGS_EBADFORMAT;
                 err_str = "unrecognized molecule";
                 goto errfree;
@@ -111,20 +116,19 @@ struct ms_tab *init_ms_tab(const char *filename)
         }
     }
     free(tmp_buf);
-    
+
     fclose(gendatf);
-    return(mstab);
+    return (mstab);
 
 errfree:
     free_ms_tab(mstab);
-    if(tmp_buf) {
+    if (tmp_buf) {
         free(tmp_buf);
     }
 errclose:
     fclose(gendatf);
 errout:
     debug_err_out();
-
 }
 
 void free_ms_tab(struct ms_tab *mstab)
@@ -132,17 +136,18 @@ void free_ms_tab(struct ms_tab *mstab)
 
     int i;
 
-    if(!mstab) {
+    if (!mstab) {
         err_warn("Tried to free a null ms_tab.\n");
         return;
     }
 
-    if(mstab->mseq) {
-        for(i = 0; i < mstab->len; i++) {
-            if(mstab->mseq[i].seq) {
+    if (mstab->mseq) {
+        for (i = 0; i < mstab->len; i++) {
+            if (mstab->mseq[i].seq) {
                 free(mstab->mseq[i].seq);
             } else {
-                err_warn("Freeing an ms_tab that is missing some sequence data.\n");
+                err_warn(
+                  "Freeing an ms_tab that is missing some sequence data.\n");
             }
         }
         free(mstab->mseq);
@@ -150,34 +155,31 @@ void free_ms_tab(struct ms_tab *mstab)
         err_warn("Freeing an ms_tab that is missing all sequence data.\n");
     }
     free(mstab);
-
 }
 
 unsigned int get_mol_counts(struct ms_tab *mstab, unsigned int *counts)
 {
-	
-	int i, j;
-	struct mol_seq *mseq;
-	unsigned int total = 0;
-	
-	debug_var_decl("tabulating molecule counts");
-	
-	param_chk(mstab && counts, errout);
-	
-	
-	memset(counts, 0, PHY_NUM_MOL_T);
-	
-	for(i = 0; i < mstab->len; i++) {
-		mseq = &mstab->mseq[i];
-		for(j = 0; j < mseq->len; j++) {
-			counts[mseq->seq[j]]++;
-			total++;
-		}
-	}
-	
-	return(total);
-	
+
+    int i, j;
+    struct mol_seq *mseq;
+    unsigned int total = 0;
+
+    debug_var_decl("tabulating molecule counts");
+
+    param_chk(mstab && counts, errout);
+
+    memset(counts, 0, PHY_NUM_MOL_T);
+
+    for (i = 0; i < mstab->len; i++) {
+        mseq = &mstab->mseq[i];
+        for (j = 0; j < mseq->len; j++) {
+            counts[mseq->seq[j]]++;
+            total++;
+        }
+    }
+
+    return (total);
+
 errout:
     debug_err_out();
-	
 }

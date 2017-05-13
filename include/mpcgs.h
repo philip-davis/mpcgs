@@ -20,9 +20,9 @@
 #ifndef MPCGS_H
 #define MPCGS_H
 
-#include<stdlib.h>
+#include <stdlib.h>
 
-#include"tree.h"
+#include "tree.h"
 
 #define EPSILON .0005
 #define MAXITER 1000
@@ -31,7 +31,8 @@
 #define LN4DELTA -11.6315080980568086
 #define MAXJUMP 20.0
 
-struct mpcgs_opt_t {
+struct mpcgs_opt_t
+{
     char *gdatfile;
     size_t niter;
     size_t nchain;
@@ -40,30 +41,34 @@ struct mpcgs_opt_t {
     long seed;
 };
 
-struct chain_param {
-	size_t nburnin;
-	size_t nsummaries;
-	size_t sum_freq;
+struct chain_param
+{
+    size_t nburnin;
+    size_t nsummaries;
+    size_t sum_freq;
 };
 
-struct mp_param {
-	size_t nproposals;
-	size_t npicks;
-	unsigned sampling;
+struct mp_param
+{
+    size_t nproposals;
+    size_t npicks;
+    unsigned sampling;
 };
 
-struct multi_proposal {
-	struct mp_param *mparam;
-	struct gene_tree *proposals;
-	float *trans_mtx;
-	unsigned int curr_idx;
+struct multi_proposal
+{
+    struct mp_param *mparam;
+    struct gene_tree *proposals;
+    float *trans_mtx;
+    unsigned int curr_idx;
 };
 
-struct chain {
-	float theta;
-	struct chain_param *cparam;
-	struct multi_proposal mp;
-	struct gtree_summary_set sum_set;
+struct chain
+{
+    float theta;
+    struct chain_param *cparam;
+    struct multi_proposal mp;
+    struct gtree_summary_set sum_set;
 };
 
 void mpcgs_estimate(struct mpcgs_opt_t *options);

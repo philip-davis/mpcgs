@@ -21,9 +21,9 @@
 #ifndef MPCGS_PHYLIP_H
 #define MPCGS_PHYLIP_H
 
-#include<stdlib.h>
+#include <stdlib.h>
 
-//TODO add support for interleaved .phy files.
+// TODO add support for interleaved .phy files.
 
 #define PHY_NAME_LEN 10
 #define PHY_N_HDR_ATTR 2
@@ -31,10 +31,11 @@
 
 #define PHY_NUM_MOL_T 256
 
-enum mol_t { 
-    DNA_A, 
-    DNA_T, 
-    DNA_C, 
+enum mol_t
+{
+    DNA_A,
+    DNA_T,
+    DNA_C,
     DNA_G,
     DNA_U,
     DNA_PYR,
@@ -78,21 +79,24 @@ enum mol_t {
     MOL_INVALID = PHY_NUM_MOL_T - 1
 };
 
-enum mol_cat {
+enum mol_cat
+{
     MOL_DNA,
     MOL_PRO
 };
 
-struct mol_seq {
+struct mol_seq
+{
     size_t len;
     char *seq;
     char name[PHY_NAME_LEN + 1];
 };
 
-struct ms_tab {
+struct ms_tab
+{
     size_t len;
     struct mol_seq *mseq;
-	size_t seq_len;
+    size_t seq_len;
 };
 
 struct ms_tab *init_ms_tab(const char *filename);

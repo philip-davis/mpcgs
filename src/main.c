@@ -17,11 +17,11 @@
     along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include<argp.h>
-#include<errno.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
+#include <argp.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "debug.h"
 #include "mpcgs.h"
@@ -34,32 +34,43 @@
 #define MPCGS_FLAG_NITER 0x08
 #define MPCGS_FLAG_THETA 0x10
 
-//Argument parsing
+// Argument parsing
 const char *argp_program_version = "mpcgs 0.2.0a";
 static char doc[] = "mpcgs -- a parallel coalescent genealogy sampler.";
 
 static struct argp_option options[] = {
-    {"verbose", 'v', "LEVEL",  OPTION_ARG_OPTIONAL, "Set verbosity LEVEL" },
-    {"quiet",   'q', 0, 0, "Produce minimal output" },
-    {"gpu",     'g', 0, OPTION_HIDDEN, "use GPU for theta estimation"},
-	{"seed",	's', "INTEGER", OPTION_HIDDEN, "random number generator seed"},
-    {"mpi",     'm', 0, OPTION_HIDDEN, "distribute processing using MPI"},
-    {"threads", 'N', "INTEGER", OPTION_HIDDEN, "run INTEGER parallel threads"},
-    {"numiter", 'n', "INTEGER", 0, "run INTEGER estimation iterations"},
-    {"chainlen", 'c', "INTEGER", 0, "generated INTEGER samples per iteration"},
-    {"burninlen", 'b', "INTEGER", 0, "length of burn-in phase"},
-    {"theta",   't', "VALUE", 0, "Set initial driving theta to VALUE" },
-    {"input",   'i', "FILE", 0, "Sequence data contained in FILE (phylib format)"},
+    { "verbose", 'v', "LEVEL", OPTION_ARG_OPTIONAL, "Set verbosity LEVEL" },
+    { "quiet", 'q', 0, 0, "Produce minimal output" },
+    { "gpu", 'g', 0, OPTION_HIDDEN, "use GPU for theta estimation" },
+    { "seed", 's', "INTEGER", OPTION_HIDDEN, "random number generator seed" },
+    { "mpi", 'm', 0, OPTION_HIDDEN, "distribute processing using MPI" },
+    { "threads",
+      'N',
+      "INTEGER",
+      OPTION_HIDDEN,
+      "run INTEGER parallel threads" },
+    { "numiter", 'n', "INTEGER", 0, "run INTEGER estimation iterations" },
+    { "chainlen",
+      'c',
+      "INTEGER",
+      0,
+      "generated INTEGER samples per iteration" },
+    { "burninlen", 'b', "INTEGER", 0, "length of burn-in phase" },
+    { "theta", 't', "VALUE", 0, "Set initial driving theta to VALUE" },
+    { "input",
+      'i',
+      "FILE",
+      0,
+      "Sequence data contained in FILE (phylib format)" },
     { 0 }
 };
-
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
 
     struct mpcgs_opt_t *arguments = state->input;
 
-    switch(key) {
+    switch (key) {
         case 'b':
             arguments->nburn = atoi(arg);
             break;
@@ -73,8 +84,8 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             arguments->niter = atoi(arg);
             break;
         case 's':
-        	arguments->seed = atol(arg);
-        	break;
+            arguments->seed = atol(arg);
+            break;
         case 't':
             arguments->init_theta = atof(arg);
             break;
@@ -82,34 +93,29 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
             return ARGP_ERR_UNKNOWN;
     }
 
-    
-
     return 0;
-
 }
 
-static struct argp argp = {options, parse_opt, 0, doc};
+static struct argp argp = { options, parse_opt, 0, doc };
 
-
-///end argument parsing
+/// end argument parsing
 
 int main(int argc, char *argv[])
 {
 
-    struct mpcgs_opt_t args = {0};
+    struct mpcgs_opt_t args = { 0 };
     int err;
 
     mpcgs_log_init();
     mpcgs_set_log_threshold(MPCGS_LOG_HIDEBUG);
-	mpcgs_set_err_threshold(MPCGS_LOG_HIDEBUG);
+    mpcgs_set_err_threshold(MPCGS_LOG_HIDEBUG);
 
     err = argp_parse(&argp, argc, argv, 0, 0, &args);
-    if(err) {
+    if (err) {
         err_out("parsing arguments", strerror(err), -err);
     }
 
     mpcgs_estimate(&args);
 
     return 0;
-
 }

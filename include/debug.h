@@ -22,10 +22,11 @@
 #ifndef MPCGS_DEBUG_H
 #define MPCGS_DEBUG_H
 
-#include<stdlib.h>
-#include<stdio.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-enum mpcgs_log_level_t {
+enum mpcgs_log_level_t
+{
     MPCGS_LOG_NONE,
     MPCGS_LOG_ERR,
     MPCGS_LOG_WARN,
@@ -38,19 +39,21 @@ static enum mpcgs_log_level_t err_threshold;
 static FILE *mpcgs_logfile;
 static FILE *mpcgs_errfile;
 
-#define mpcgs_log(log_level, ...) {\
-    if(log_level <= mpcgs_get_log_threshold()) {\
-        fprintf(mpcgs_get_log_file(), __VA_ARGS__);\
-        fflush(mpcgs_logfile);\
-    }\
-}
+#define mpcgs_log(log_level, ...)                                              \
+    {                                                                          \
+        if (log_level <= mpcgs_get_log_threshold()) {                          \
+            fprintf(mpcgs_get_log_file(), __VA_ARGS__);                        \
+            fflush(mpcgs_logfile);                                             \
+        }                                                                      \
+    }
 
-#define mpcgs_err(log_level, ...) {\
-    if(log_level <= mpcgs_get_err_threshold()) {\
-        fprintf(mpcgs_get_err_file(), __VA_ARGS__);\
-        fflush(mpcgs_errfile);\
-    }\
-}
+#define mpcgs_err(log_level, ...)                                              \
+    {                                                                          \
+        if (log_level <= mpcgs_get_err_threshold()) {                          \
+            fprintf(mpcgs_get_err_file(), __VA_ARGS__);                        \
+            fflush(mpcgs_errfile);                                             \
+        }                                                                      \
+    }
 
 #define log_err(...) mpcgs_log(MPCGS_LOG_ERR, __VA_ARGS__)
 #define log_warn(...) mpcgs_log(MPCGS_LOG_WARN, __VA_ARGS__)
@@ -61,31 +64,30 @@ static FILE *mpcgs_errfile;
 #define err_debug(...) mpcgs_err(MPCGS_LOG_DEBUG, __VA_ARGS__)
 #define err_hidebug(...) mpcgs_err(MPCGS_LOG_HIDEBUG, __VA_ARGS__)
 
-#define debug_var_decl(errname) \
-	int err, param_ok; \
-	const char *err_name = errname ; \
-	char *err_str
-	
+#define debug_var_decl(errname)                                                \
+    int err, param_ok;                                                         \
+    const char *err_name = errname;                                            \
+    char *err_str
 
-#define param_chk(param_ok, target) {\
-	if(!(param_ok)) {\
-		err = EINVAL; \
-		err_str = "passed invalid parameters" ; \
-		goto target ; \
-	} \
-}
+#define param_chk(param_ok, target)                                            \
+    {                                                                          \
+        if (!(param_ok)) {                                                     \
+            err = EINVAL;                                                      \
+            err_str = "passed invalid parameters";                             \
+            goto target;                                                       \
+        }                                                                      \
+    }
 
-
-#define alloc_chk(ptr, target) {\
-    if(!ptr) {\
-        err_str = strerror(ENOMEM);\
-		err = ENOMEM; \
-        goto target;\
-    }\
-}
+#define alloc_chk(ptr, target)                                                 \
+    {                                                                          \
+        if (!ptr) {                                                            \
+            err_str = strerror(ENOMEM);                                        \
+            err = ENOMEM;                                                      \
+            goto target;                                                       \
+        }                                                                      \
+    }
 
 #define debug_err_out() err_out(err_name, err_str, -err)
-
 
 void mpcgs_set_log_threshold(const enum mpcgs_log_level_t log_level);
 void mpcgs_set_err_threshold(const enum mpcgs_log_level_t err_level);
@@ -98,6 +100,6 @@ FILE *mpcgs_get_err_file();
 void mpcgs_log_init();
 void err_out(const char *err_name, const char *err_str, int rc);
 
-//TODO Adapt CUDA debugging facilities.
+// TODO Adapt CUDA debugging facilities.
 
 #endif /* MPCGS_DEBUG_H */
