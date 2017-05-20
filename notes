@@ -1,0 +1,6 @@
+nvcc -rdc=true -g -G -o mlgene main.cu phylip.cu genealogy.cu maxlike.cu sfmt/SFMT.c -DSFMT_MEXP=19937
+
+nvcc -arch compute_35 --gpu-code sm_35 -rdc=true -g -G -o mlgene main.cu phylip.cu genealogy.cu maxlike.cu sfmt/SFMT.c -DSFMT_MEXP=19937
+
+nvcc -arch compute_35 --gpu-code=sm_35 -rdc=true -Xptxas -dlcm=ca -o mlgene main.cu phylip.cu genealogy.cu maxlike.cu sfmt/SFMT.c -DSFMT_MEXP=19937
+
