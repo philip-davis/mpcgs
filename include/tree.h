@@ -94,6 +94,9 @@ struct gtree_summary_set
     struct gtree_summary *summaries;
     size_t nsummaries;
     size_t szintervals;
+#ifndef MPCGS_NOGPU
+    float *block_scratch;
+#endif /* MPCGS_NOGPU */
 };
 
 // TODO: unify formatting of parameters (newlines)
@@ -114,7 +117,7 @@ struct gene_tree *gtree_propose_fixed_target(struct gene_tree *current,
                                              unsigned int tgtidx,
                                              sfmt_t *sfmt);
 void gtree_digest(struct gene_tree *gtree, struct gtree_summary *digest);
-void gtree_summary_set_create(struct gtree_summary_set *sum_set,
+void gtree_summary_set_create(struct gtree_summary_set **sum_set,
                               size_t count,
                               size_t nintervals);
 void gtree_summary_set_base_lposteriors(struct gtree_summary_set *sum_set,
@@ -129,5 +132,16 @@ size_t weighted_pick(float *dist,
                      size_t num_picks,
                      float sum_dist,
                      float randf);
+
+#ifndef MPCGS_NOGPU
+
+void gtree_summary_set_create_gpu(struct gtree_summary_set **sum_set,
+                              size_t count,
+                              size_t nintervals);
+void gtree_summary_set_base_lposteriors_gpu(struct gtree_summary_set *sum_set,
+                                        float drv_theta);
+float gtree_summary_set_llkhood_gpu(struct gtree_summary_set *summary_set,
+                                float theta);
+#endif /* MPCGS_NOGPU */
 
 #endif /* MPCGS_TREE_H */

@@ -49,10 +49,15 @@ static float lkhood_gradient_ascent_step(struct gtree_summary_set *summary_set,
     thetalow = theta - (2 * DELTA);
     thetahigh = theta + (2 * DELTA);
 
+#ifdef MPCGS_NOGPU
     llkhoodlow = gtree_summary_set_llkhood(summary_set, thetalow);
     llkhood = gtree_summary_set_llkhood(summary_set, theta);
     llkhoodhigh = gtree_summary_set_llkhood(summary_set, thetahigh);
-
+#else
+    llkhoodlow = gtree_summary_set_llkhood_gpu(summary_set, thetalow);
+    llkhood = gtree_summary_set_llkhood_gpu(summary_set, theta);
+    llkhoodhigh = gtree_summary_set_llkhood_gpu(summary_set, thetahigh);
+#endif /* MPCGS_NOGPU */
     half_diff = (llkhoodhigh - llkhoodlow) / 2.0;
     half_sum = (llkhoodhigh + llkhoodlow) / 2.0;
 
@@ -80,7 +85,11 @@ static float lkhood_gradient_ascent_step(struct gtree_summary_set *summary_set,
         if (thetanext <= 0.0) {
             continue;
         }
+#ifdef MPCGS_NOGPU
         llkhoodnext = gtree_summary_set_llkhood(summary_set, thetanext);
+#else
+        llkhoodnext = gtree_summary_set_llkhood_gpu(summary_set, thetanext);
+#endif /* MPCGS_NOGPU */
         if (llkhoodnext >= llkhood) {
             break;
         }
@@ -107,7 +116,11 @@ static float lkhood_by_gradient_ascent(struct gtree_summary_set *summary_set,
         // TODO: handle error
     }
 
+#ifdef MPCGS_NOGPU
     gtree_summary_set_base_lposteriors(summary_set, drv_theta);
+#else
+    gtree_summary_set_base_lposteriors_gpu(summary_set, drv_theta);
+#endif /* MPCGS_NOGPU */
 
     thnext = drv_theta;
     iteration = 0;
@@ -144,7 +157,7 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     cparam = ch->cparam;
     mparam = ch->mp.mparam;
 
-    sum_set = &ch->sum_set;
+    sum_set = ch->sum_set;
     summary = &sum_set->summaries[sum_set->nsummaries];
     curr_tree = &ch->mp.proposals[ch->mp.curr_idx];
     // TODO: refactor
@@ -210,7 +223,7 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
         //printf("%u,", pick); //
         if (mparam->sampling && (i % cparam->sum_freq) == 0) {
             gtree_digest(&ch->mp.proposals[pick], summary);
-            ch->sum_set.nsummaries++;
+            ch->sum_set->nsummaries++;
             summary++;
         }
     }
@@ -237,7 +250,7 @@ static float run_chain(struct chain *ch, sfmt_t *sfmt)
     }
 
     cparam = ch->cparam;
-    summary = ch->sum_set.summaries;
+    summary = ch->sum_set->summaries;
     total_steps = cparam->nburnin + (cparam->nsummaries * cparam->sum_freq);
     curr_tree = &ch->mp.proposals[ch->mp.curr_idx];
     for (i = 0; i < total_steps; i++) {
@@ -264,12 +277,12 @@ static float run_chain(struct chain *ch, sfmt_t *sfmt)
             gtree_digest(curr_tree, summary);
             // TODO: encapsulate summary set operations:
             summary++;
-            ch->sum_set.nsummaries++;
+            ch->sum_set->nsummaries++;
         }
     }
 
-    estimate = lkhood_by_gradient_ascent(&ch->sum_set, ch->theta);
-    ch->sum_set.nsummaries = 0;
+    estimate = lkhood_by_gradient_ascent(ch->sum_set, ch->theta);
+    ch->sum_set->nsummaries = 0;
     return (estimate);
 }
 
@@ -317,8 +330,8 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     	to_pick -= sampling_param.npicks;
     }
 
-    estimate = lkhood_by_gradient_ascent(&ch->sum_set, ch->theta);
-    ch->sum_set.nsummaries = 0;
+    estimate = lkhood_by_gradient_ascent(ch->sum_set, ch->theta);
+    ch->sum_set->nsummaries = 0;
     return (estimate);
 
 }
@@ -380,9 +393,13 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
     log_debug("init tree root time: %f\n", init_tree->root->time);
     log_debug("init tree log likelihood: %f\n", init_tree->llhood);
 
+#ifdef MPCGS_NOGPU
     gtree_summary_set_create(
       &ch.sum_set, big_chain_param.nsummaries, init_tree->nnodes);
-
+#else
+    gtree_summary_set_create_gpu(
+         &ch.sum_set, big_chain_param.nsummaries, init_tree->nnodes);
+#endif
     for (i = 0; i < 10; i++) {
         //ch.theta = run_chain(&ch, &sfmt);
     	ch.theta = run_chain_with_multi_proposal(&ch, &sfmt);

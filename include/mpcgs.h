@@ -68,7 +68,7 @@ struct chain
     float theta;
     struct chain_param *cparam;
     struct multi_proposal mp;
-    struct gtree_summary_set sum_set;
+    struct gtree_summary_set *sum_set;
 };
 
 void mpcgs_estimate(struct mpcgs_opt_t *options);

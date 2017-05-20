@@ -177,6 +177,7 @@ float get_next_coal_time(unsigned int active,
     do {
     	r = sfmt_genrand_real3(sfmt); // Uniform on interval (0,1)
     }while(r >= 1.0 || r <= 0.0);
+
     if (2 == act_coal) {
         denom = ((float)active * (float)(active - 1)) / 2.0;
     } else if (1 == act_coal) {
@@ -1135,7 +1136,7 @@ void gtree_digest(struct gene_tree *gtree, struct gtree_summary *digest)
     }
 }
 
-void gtree_summary_set_create(struct gtree_summary_set *sum_set,
+void gtree_summary_set_create(struct gtree_summary_set **sum_set,
                               size_t count,
                               size_t nintervals)
 {
@@ -1147,14 +1148,16 @@ void gtree_summary_set_create(struct gtree_summary_set *sum_set,
         // TODO: handle error
     }
 
-    sum_set->nsummaries = 0;
-    sum_set->szintervals = count;
-    sum_set->summaries = malloc(count * sizeof(*sum_set->summaries));
-    if (!sum_set->summaries) {
+    *sum_set = malloc(sizeof(**sum_set));
+
+    (*sum_set)->nsummaries = 0;
+    (*sum_set)->szintervals = count;
+    (*sum_set)->summaries = malloc(count * sizeof(*((*sum_set)->summaries)));
+    if (!(*sum_set)->summaries) {
         // TODO: handle error
     }
 
-    summary = sum_set->summaries;
+    summary = (*sum_set)->summaries;
     for (i = 0; i < count; i++) {
         summary->nintervals = nintervals;
         summary->intervals = malloc(nintervals * sizeof(*summary->intervals));
@@ -1165,7 +1168,7 @@ void gtree_summary_set_create(struct gtree_summary_set *sum_set,
     }
 }
 
-static float summary_calc_lposterior(struct gtree_summary *sum, float theta)
+static float gtree_summary_calc_lposterior(struct gtree_summary *sum, float theta)
 {
 
     int i;
@@ -1207,7 +1210,7 @@ void gtree_summary_set_base_lposteriors(struct gtree_summary_set *sum_set,
 
     summary = sum_set->summaries;
     for (i = 0; i < sum_set->nsummaries; i++) {
-        summary->ldrv_posterior = summary_calc_lposterior(summary, drv_theta);
+        summary->ldrv_posterior = gtree_summary_calc_lposterior(summary, drv_theta);
         summary++;
     }
 }
@@ -1236,7 +1239,7 @@ float gtree_summary_set_llkhood(struct gtree_summary_set *summary_set,
     // calculate posterior for each summary tree
     for (i = 0; i < summary_set->nsummaries; i++) {
         summary->ltmp_lkhood_comp =
-          summary_calc_lposterior(summary, theta) - summary->ldrv_posterior;
+          gtree_summary_calc_lposterior(summary, theta) - summary->ldrv_posterior;
         if (summary->ltmp_lkhood_comp > normal) {
             normal = summary->ltmp_lkhood_comp;
         }
