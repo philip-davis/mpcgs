@@ -155,21 +155,21 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     }
 
     cparam = ch->cparam;
-    mparam = ch->mp.mparam;
+    mparam = ch->mp->mparam;
 
     sum_set = ch->sum_set;
     summary = &sum_set->summaries[sum_set->nsummaries];
-    curr_tree = &ch->mp.proposals[ch->mp.curr_idx];
+    curr_tree = &ch->mp->proposals[ch->mp->curr_idx];
     // TODO: refactor
     tgtidx =
       sfmt_genrand_uint32(sfmt) % ((curr_tree->nnodes + curr_tree->ntips) - 1);
     if (tgtidx == curr_tree->root->idx) {
         tgtidx++;
     }
-    proposal = ch->mp.proposals;
+    proposal = ch->mp->proposals;
     llhood_sum = 0;
     for (i = 0; i < mparam->nproposals; i++) {
-        if (i != ch->mp.curr_idx) {
+        if (i != ch->mp->curr_idx) {
             gtree_propose_fixed_target(
               curr_tree, proposal, ch->theta, tgtidx, sfmt);
             gtree_set_llhood(proposal);
@@ -182,54 +182,44 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
 
     //printf("\n"); //
 
-    proposal = ch->mp.proposals;
+    proposal = ch->mp->proposals;
     for (i = 0; i < mparam->nproposals; i++) {
     	trans_mtx_sum = 0.0;
         for (j = 0; j < mparam->nproposals; j++) {
             trans_mtx_pos = (i * mparam->nproposals) + j;
             if (i != j) {
-                if (ch->mp.proposals[j].llhood >= proposal->llhood) {
+                if (ch->mp->proposals[j].llhood >= proposal->llhood) {
                     trans_mtx_val = 1.0;
                 } else {
                     trans_mtx_val =
-                      exp(ch->mp.proposals[j].llhood - proposal->llhood);
+                      exp(ch->mp->proposals[j].llhood - proposal->llhood);
                 }
                 trans_mtx_val /= (float)(mparam->nproposals - 1);
                 trans_mtx_sum += trans_mtx_val;
-                ch->mp.trans_mtx[trans_mtx_pos] = trans_mtx_val;
+                ch->mp->trans_mtx[trans_mtx_pos] = trans_mtx_val;
             }
         }
         trans_mtx_pos = (i * mparam->nproposals) + i;
-        ch->mp.trans_mtx[trans_mtx_pos] = 1.0 - trans_mtx_sum;
+        ch->mp->trans_mtx[trans_mtx_pos] = 1.0 - trans_mtx_sum;
         proposal++;
     }
 
-    /*
-    for(int i = 0; i < mparam->nproposals; i++) {
-    	for(j = 0; j < mparam->nproposals; j++) {
-    		trans_mtx_pos = (i * mparam->nproposals) + j;
-    		printf("%f,", ch->mp.trans_mtx[trans_mtx_pos]);
-    	}
-    	printf("\n");
-    }
-    */
-
-    pick = ch->mp.curr_idx;
+    pick = ch->mp->curr_idx;
     for (i = 1; i <= (mparam->npicks * cparam->sum_freq); i++) {
-        trans_dist = &ch->mp.trans_mtx[pick * mparam->nproposals];
+        trans_dist = &ch->mp->trans_mtx[pick * mparam->nproposals];
         randf = 1.0 - sfmt_genrand_real2(sfmt);
         pick =
           (unsigned)weighted_pick(trans_dist, mparam->nproposals, 1.0, randf);
         //printf("%u,", pick); //
         if (mparam->sampling && (i % cparam->sum_freq) == 0) {
-            gtree_digest(&ch->mp.proposals[pick], summary);
+            gtree_digest(&ch->mp->proposals[pick], summary);
             ch->sum_set->nsummaries++;
             summary++;
         }
     }
     //printf("\n"); //
 
-    ch->mp.curr_idx = pick;
+    ch->mp->curr_idx = pick;
 }
 
 static float run_chain(struct chain *ch, sfmt_t *sfmt)
@@ -252,7 +242,7 @@ static float run_chain(struct chain *ch, sfmt_t *sfmt)
     cparam = ch->cparam;
     summary = ch->sum_set->summaries;
     total_steps = cparam->nburnin + (cparam->nsummaries * cparam->sum_freq);
-    curr_tree = &ch->mp.proposals[ch->mp.curr_idx];
+    curr_tree = &ch->mp->proposals[ch->mp->curr_idx];
     for (i = 0; i < total_steps; i++) {
         tgtidx = sfmt_genrand_uint32(sfmt) %
                  ((curr_tree->nnodes + curr_tree->ntips) - 1);
@@ -311,7 +301,7 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
 
     //TODO: refactor
     to_pick = cparam->nburnin;
-    ch->mp.mparam = &burnin_param;
+    ch->mp->mparam = &burnin_param;
     if(to_pick % burnin_param.npicks) {
     	//TODO: warn
     }
@@ -321,7 +311,7 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     }
 
     to_pick = cparam->nsummaries;
-    ch->mp.mparam = &sampling_param;
+    ch->mp->mparam = &sampling_param;
     if(to_pick % sampling_param.npicks) {
     	//TODO: err
     }
@@ -336,6 +326,34 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
 
 }
 
+static unsigned multi_prop_init(struct multi_proposal **mp, struct ms_tab *data, unsigned nproposal, float theta, sfmt_t *sfmt)
+{
+
+	struct gene_tree *init_tree;
+
+	if(!mp) {
+		//TODO: handle error
+	}
+
+	*mp = malloc(sizeof(**mp));
+	(*mp)->curr_idx = 0;
+	(*mp)->proposals = calloc(nproposal, sizeof(*((*mp)->proposals)));
+	(*mp)->trans_mtx = malloc(nproposal * nproposal * sizeof(*((*mp)->trans_mtx)));
+
+	init_tree = &(*mp)->proposals[(*mp)->curr_idx];
+
+	gtree_init(theta, data->len, init_tree, sfmt);
+	gtree_add_seqs_to_tips(init_tree, data);
+	gtree_set_exp(init_tree);
+	gtree_print_newick(init_tree);
+	gtree_set_llhood(init_tree);
+	log_debug("init tree root time: %f\n", init_tree->root->time);
+	log_debug("init tree log likelihood: %f\n", init_tree->llhood);
+
+	return(init_tree->nnodes);
+
+}
+
 void mpcgs_estimate(struct mpcgs_opt_t *options)
 {
 
@@ -343,8 +361,7 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
     unsigned long seed;
     sfmt_t sfmt;
     struct ms_tab *data;
-    struct gene_tree *init_tree;
-    unsigned int nmpproposals;
+    unsigned num_nodes, nmpproposals;
     struct chain_param small_chain_param, big_chain_param;
     struct chain ch;
     int i, err;
@@ -366,42 +383,35 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
     log_debug("rseed = %li\n", seed);
     sfmt_init_gen_rand(&sfmt, seed);
 
+    data = init_ms_tab(options->gdatfile);
+
     small_chain_param.nburnin = big_chain_param.nburnin = 1000;
     small_chain_param.nsummaries = 500;
     big_chain_param.nsummaries = 10000;
     small_chain_param.sum_freq = big_chain_param.sum_freq = 20;
 
-    // TODO: move this to an init function
     ch.theta = options->init_theta;
     ch.cparam = &small_chain_param;
     nmpproposals = 100;
-    // ch.mp.mparam->nproposals = nmpproposals;
-    // ch.mp.mparam->npicks = nmpproposals;
-    ch.mp.curr_idx = 0;
-    ch.mp.proposals = malloc(nmpproposals * sizeof(*ch.mp.proposals));
-    ch.mp.trans_mtx =
-      malloc(nmpproposals * nmpproposals * sizeof(*ch.mp.trans_mtx));
-
-    init_tree = &ch.mp.proposals[ch.mp.curr_idx];
-
-    data = init_ms_tab(options->gdatfile);
+    num_nodes = multi_prop_init(&(ch.mp), data, nmpproposals, ch.theta, &sfmt);
+/*
     gtree_init(ch.theta, data->len, init_tree, &sfmt);
     gtree_add_seqs_to_tips(init_tree, data);
     gtree_set_exp(init_tree);
     gtree_print_newick(init_tree);
     gtree_set_llhood(init_tree);
+
     log_debug("init tree root time: %f\n", init_tree->root->time);
     log_debug("init tree log likelihood: %f\n", init_tree->llhood);
-
+*/
 #ifdef MPCGS_NOGPU
     gtree_summary_set_create(
-      &ch.sum_set, big_chain_param.nsummaries, init_tree->nnodes);
+      &ch.sum_set, big_chain_param.nsummaries, num_nodes);
 #else
     gtree_summary_set_create_gpu(
-         &ch.sum_set, big_chain_param.nsummaries, init_tree->nnodes);
+         &ch.sum_set, big_chain_param.nsummaries, num_nodes);
 #endif
     for (i = 0; i < 10; i++) {
-        //ch.theta = run_chain(&ch, &sfmt);
     	ch.theta = run_chain_with_multi_proposal(&ch, &sfmt);
         printf("Theta estimate after iteration %i: %f\n", (i + 1), ch.theta);
     }

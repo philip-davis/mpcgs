@@ -71,6 +71,9 @@ struct gene_tree
     float lfreq[MPCGS_NUM_FREQ_TERM];
     float xrate;
     float yrate;
+#ifndef MPCGS_NOGPU
+    struct gtree_summary *my_summary;
+#endif /* MPCGS_NOGPU */
     float llhood;
 };
 
@@ -99,7 +102,10 @@ struct gtree_summary_set
 #endif /* MPCGS_NOGPU */
 };
 
-// TODO: unify formatting of parameters (newlines)
+void gtree_nodes_init(struct gene_tree *gtree, size_t ntips);
+void gtree_simulate_tree(struct gene_tree *gtree,
+                                float theta,
+                                sfmt_t *sfmt);
 void gtree_init(float theta,
                 size_t ntips,
                 struct gene_tree *gtree,
@@ -142,6 +148,7 @@ void gtree_summary_set_base_lposteriors_gpu(struct gtree_summary_set *sum_set,
                                         float drv_theta);
 float gtree_summary_set_llkhood_gpu(struct gtree_summary_set *summary_set,
                                 float theta);
+void gtree_set_llhood_gpu(struct gene_tree *gtree);
 #endif /* MPCGS_NOGPU */
 
 #endif /* MPCGS_TREE_H */

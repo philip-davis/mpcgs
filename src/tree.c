@@ -198,7 +198,7 @@ errout:
     debug_err_out();
 }
 
-static void gtree_nodes_init(struct gene_tree *gtree, size_t ntips)
+void gtree_nodes_init(struct gene_tree *gtree, size_t ntips)
 {
 
     struct gene_node *nodes;
@@ -260,7 +260,7 @@ static void gnode_add_child(struct gene_node *parent, struct gene_node *child)
     child->exp_valid = 0;
 }
 
-static void gtree_simulate_tree(struct gene_tree *gtree,
+void gtree_simulate_tree(struct gene_tree *gtree,
                                 float theta,
                                 sfmt_t *sfmt)
 {
@@ -745,11 +745,16 @@ static void gtree_copy(struct gene_tree *gtree, struct gene_tree *newtree)
         // TODO: handle error
     }
 
-    *newtree = *gtree;
+    nodesSz = sizeof(*gtree->nodes) * (gtree->nnodes + gtree->ntips);
 
-    nodesSz = sizeof(*newtree->nodes) * (newtree->nnodes + newtree->ntips);
-    newnodes = malloc(nodesSz);
+    if(newtree->nodes) {
+    	newnodes = newtree->nodes;
+    } else {
+    	newnodes = malloc(nodesSz);
+    }
     memcpy(newnodes, gtree->nodes, nodesSz);
+
+    *newtree = *gtree;
 
     for (i = 0; i < newtree->nnodes + newtree->ntips; i++) {
         // TODO: find a better way to do this
@@ -1160,7 +1165,7 @@ void gtree_summary_set_create(struct gtree_summary_set **sum_set,
     summary = (*sum_set)->summaries;
     for (i = 0; i < count; i++) {
         summary->nintervals = nintervals;
-        summary->intervals = malloc(nintervals * sizeof(*summary->intervals));
+        summary->intervals = malloc(nintervals * sizeof(*(summary->intervals)));
         if (!summary->intervals) {
             // TODO: handle error
         }

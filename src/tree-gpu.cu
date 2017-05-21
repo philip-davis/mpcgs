@@ -8,6 +8,7 @@ extern "C" {
 #include <stdlib.h>
 #include <stdio.h>
 #include <cuda.h>
+#include <string.h>
 
 #include "mpcgs-gpu.h"
 #include "tree.h"
@@ -202,7 +203,7 @@ void gtree_summary_set_create_gpu(struct gtree_summary_set **sum_set,
     summary = (*sum_set)->summaries;
     for (i = 0; i < count; i++) {
         summary->nintervals = nintervals;
-        cudaMallocManaged(&summary->intervals, nintervals * sizeof(*summary->intervals));
+        cudaMallocManaged(&summary->intervals, nintervals * sizeof(*(summary->intervals)));
         if (!summary->intervals) {
             // TODO: handle error
         }
@@ -213,6 +214,31 @@ void gtree_summary_set_create_gpu(struct gtree_summary_set **sum_set,
     cudaMallocManaged(&((*sum_set)->block_scratch), num_block * sizeof(float));
 
 }
+
+void gtree_set_llhood_gpu(struct gene_tree *gtree)
+{
+
+
+
+}
+
+
+void gtree_init_gpu(float theta,
+                size_t ntips,
+                struct gene_tree *gtree,
+                sfmt_t *sfmt)
+{
+
+
+    memset(gtree, sizeof(*gtree), 0);
+
+    gtree_nodes_init(gtree, ntips);
+    gtree_simulate_tree(gtree, theta, sfmt);
+
+
+
+}
+
 
 #endif /* MPCGS_NOGPU */
 

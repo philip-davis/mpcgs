@@ -67,7 +67,7 @@ struct chain
 {
     float theta;
     struct chain_param *cparam;
-    struct multi_proposal mp;
+    struct multi_proposal *mp;
     struct gtree_summary_set *sum_set;
 };
 
