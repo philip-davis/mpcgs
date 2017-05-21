@@ -71,6 +71,12 @@ struct chain
     struct gtree_summary_set *sum_set;
 };
 
+#ifndef MPCGS_NOGPU
+
+unsigned multi_prop_init_gpu(struct multi_proposal **mp, struct ms_tab *data, unsigned nproposal, float theta, sfmt_t *sfmt);
+
+#endif
+
 void mpcgs_estimate(struct mpcgs_opt_t *options);
 
 #endif /* MPCGS_H */

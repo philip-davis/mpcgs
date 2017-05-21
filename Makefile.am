@@ -8,6 +8,7 @@ mpcgs_SOURCES = src/main.c \
                 src/mpcgs.c \
                 src/tree.c \
                 src/tree-gpu.cu \
+                src/mpcgs-gpu.cu \
                 sfmt/SFMT.c
 
 .cu.o: 

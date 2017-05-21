@@ -176,11 +176,8 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
             llhood_sum += proposal->llhood;
         }
 
-        //printf("%f,", proposal->llhood); //
         proposal++;
     }
-
-    //printf("\n"); //
 
     proposal = ch->mp->proposals;
     for (i = 0; i < mparam->nproposals; i++) {
@@ -210,14 +207,12 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
         randf = 1.0 - sfmt_genrand_real2(sfmt);
         pick =
           (unsigned)weighted_pick(trans_dist, mparam->nproposals, 1.0, randf);
-        //printf("%u,", pick); //
         if (mparam->sampling && (i % cparam->sum_freq) == 0) {
             gtree_digest(&ch->mp->proposals[pick], summary);
             ch->sum_set->nsummaries++;
             summary++;
         }
     }
-    //printf("\n"); //
 
     ch->mp->curr_idx = pick;
 }
@@ -305,6 +300,8 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     if(to_pick % burnin_param.npicks) {
     	//TODO: warn
     }
+
+
     while(to_pick > 0) {
     	do_multi_proposal(ch, sfmt);
     	to_pick -= burnin_param.npicks;
@@ -315,6 +312,7 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     if(to_pick % sampling_param.npicks) {
     	//TODO: err
     }
+
     while(to_pick > 0) {
     	do_multi_proposal(ch, sfmt);
     	to_pick -= sampling_param.npicks;
@@ -394,16 +392,6 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
     ch.cparam = &small_chain_param;
     nmpproposals = 100;
     num_nodes = multi_prop_init(&(ch.mp), data, nmpproposals, ch.theta, &sfmt);
-/*
-    gtree_init(ch.theta, data->len, init_tree, &sfmt);
-    gtree_add_seqs_to_tips(init_tree, data);
-    gtree_set_exp(init_tree);
-    gtree_print_newick(init_tree);
-    gtree_set_llhood(init_tree);
-
-    log_debug("init tree root time: %f\n", init_tree->root->time);
-    log_debug("init tree log likelihood: %f\n", init_tree->llhood);
-*/
 #ifdef MPCGS_NOGPU
     gtree_summary_set_create(
       &ch.sum_set, big_chain_param.nsummaries, num_nodes);
@@ -412,13 +400,14 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
          &ch.sum_set, big_chain_param.nsummaries, num_nodes);
 #endif
     for (i = 0; i < 10; i++) {
+    	//ch.theta = run_chain(&ch, &sfmt);
     	ch.theta = run_chain_with_multi_proposal(&ch, &sfmt);
         printf("Theta estimate after iteration %i: %f\n", (i + 1), ch.theta);
     }
 
     ch.cparam = &big_chain_param;
     for (i = 0; i < 2; i++) {
-        //ch.theta = run_chain(&ch, &sfmt);
+    	//ch.theta = run_chain(&ch, &sfmt);
     	ch.theta = run_chain_with_multi_proposal(&ch, &sfmt);
         printf(
           "Theta estimate after long iteration %i: %f\n", (i + 1), ch.theta);
