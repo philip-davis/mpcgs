@@ -27,7 +27,7 @@
 #include "phylip.h"
 
 #define MPCGS_NUM_FREQ_TERM 8
-#define NUM_BASE 4
+#define NUM_BASE 4 //TODO: get rid of static references to 4 throughout code
 
 enum
 {
@@ -51,13 +51,17 @@ struct gene_node
     struct gene_node *prev;
     struct gene_node *next;
     struct gene_tree *tree;
-    struct mol_seq *mseq;
     float time;
     int exp_valid;
     float lexpA;
     float lexpB;
     float lexpC;
+    struct mol_seq *mseq;
+#ifndef MPCGS_NOGPU
+    float *tip_llhoods;
+#endif /* MPCGS_NOGPU */
 };
+
 
 struct gene_tree
 {
@@ -72,10 +76,15 @@ struct gene_tree
     float xrate;
     float yrate;
 #ifndef MPCGS_NOGPU
-    struct gtree_summary *my_summary;
+    float *block_scratch;
+    //Some pre-computed likelihood kernel parameters:
+    size_t block_size;
+    size_t num_blocks;
+    size_t shared_size;
 #endif /* MPCGS_NOGPU */
     float llhood;
 };
+
 
 struct gnode_list
 {
@@ -83,6 +92,7 @@ struct gnode_list
     int head;
     int tail;
 };
+
 
 struct gtree_summary
 {
@@ -102,10 +112,7 @@ struct gtree_summary_set
 #endif /* MPCGS_NOGPU */
 };
 
-void gtree_nodes_init(struct gene_tree *gtree, size_t ntips);
-void gtree_simulate_tree(struct gene_tree *gtree,
-                                float theta,
-                                sfmt_t *sfmt);
+void gtree_simulate_tree(struct gene_tree *gtree, float theta, sfmt_t *sfmt);
 void gtree_init(float theta,
                 size_t ntips,
                 struct gene_tree *gtree,
@@ -140,14 +147,19 @@ size_t weighted_pick(float *dist,
                      float randf);
 
 #ifndef MPCGS_NOGPU
-
+void gtree_add_seqs_to_tips_gpu(struct gene_tree *gtree, struct ms_tab *mstab);
+void gtree_nodes_init_gpu(struct gene_tree *gtree, size_t ntips, size_t seq_len);
+void gtree_init_gpu(float theta,
+                size_t ntips,
+                struct gene_tree *gtree,
+                sfmt_t *sfmt);
 void gtree_summary_set_create_gpu(struct gtree_summary_set **sum_set,
-                              size_t count,
-                              size_t nintervals);
+                                  size_t count,
+                                  size_t nintervals);
 void gtree_summary_set_base_lposteriors_gpu(struct gtree_summary_set *sum_set,
-                                        float drv_theta);
+                                            float drv_theta);
 float gtree_summary_set_llkhood_gpu(struct gtree_summary_set *summary_set,
-                                float theta);
+                                    float theta);
 void gtree_set_llhood_gpu(struct gene_tree *gtree);
 #endif /* MPCGS_NOGPU */
 

@@ -6,8 +6,10 @@
 #ifndef MPCGS_GPU_H_
 #define MPCGS_GPU_H_
 
-#define BLKSZ 256
+#define DEF_BLKSZ 256 // default blocksize for gradient ascent and multi_prop
+                  // kernels
 #define WARPSZ 32
+#define MAX_SHARED_SZ 49152
 
 #ifdef __CDT_PARSER__
 #define __global__

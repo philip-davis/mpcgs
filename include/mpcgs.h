@@ -73,7 +73,11 @@ struct chain
 
 #ifndef MPCGS_NOGPU
 
-unsigned multi_prop_init_gpu(struct multi_proposal **mp, struct ms_tab *data, unsigned nproposal, float theta, sfmt_t *sfmt);
+unsigned multi_prop_init_gpu(struct multi_proposal **mp,
+                             struct ms_tab *data,
+                             unsigned nproposal,
+                             float theta,
+                             sfmt_t *sfmt);
 
 #endif
 

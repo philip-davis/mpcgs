@@ -164,7 +164,7 @@ float get_next_coal_time(unsigned int active,
                          sfmt_t *sfmt)
 {
 
-	float r, time, denom;
+    float r, time, denom;
 
     debug_var_decl("allocating tree nodes");
 
@@ -175,8 +175,8 @@ float get_next_coal_time(unsigned int active,
     }
 
     do {
-    	r = sfmt_genrand_real3(sfmt); // Uniform on interval (0,1)
-    }while(r >= 1.0 || r <= 0.0);
+        r = sfmt_genrand_real3(sfmt); // Uniform on interval (0,1)
+    } while (r >= 1.0 || r <= 0.0);
 
     if (2 == act_coal) {
         denom = ((float)active * (float)(active - 1)) / 2.0;
@@ -198,7 +198,7 @@ errout:
     debug_err_out();
 }
 
-void gtree_nodes_init(struct gene_tree *gtree, size_t ntips)
+static void gtree_nodes_init(struct gene_tree *gtree, size_t ntips)
 {
 
     struct gene_node *nodes;
@@ -260,9 +260,7 @@ static void gnode_add_child(struct gene_node *parent, struct gene_node *child)
     child->exp_valid = 0;
 }
 
-void gtree_simulate_tree(struct gene_tree *gtree,
-                                float theta,
-                                sfmt_t *sfmt)
+void gtree_simulate_tree(struct gene_tree *gtree, float theta, sfmt_t *sfmt)
 {
 
     struct gene_node **branches;
@@ -325,7 +323,7 @@ void gtree_init(float theta,
 
     param_chk(0 != ntips && theta > 0.0 && gtree, errout);
 
-    memset(gtree, sizeof(*gtree), 0);
+    memset(gtree, 0, sizeof(*gtree));
 
     gtree_nodes_init(gtree, ntips);
     gtree_simulate_tree(gtree, theta, sfmt);
@@ -747,14 +745,21 @@ static void gtree_copy(struct gene_tree *gtree, struct gene_tree *newtree)
 
     nodesSz = sizeof(*gtree->nodes) * (gtree->nnodes + gtree->ntips);
 
-    if(newtree->nodes) {
-    	newnodes = newtree->nodes;
+    if (newtree->nodes) {
+        newnodes = newtree->nodes;
     } else {
-    	newnodes = malloc(nodesSz);
+        newnodes = malloc(nodesSz);
     }
     memcpy(newnodes, gtree->nodes, nodesSz);
 
+#ifndef MPCGS_NOGPU
+    float *block_scratch;
+    block_scratch = gtree->block_scratch;
+#endif /* MPCGS_NOGPU */
     *newtree = *gtree;
+#ifndef MPCGS_NOGPU
+    newtree->block_scratch = block_scratch;
+#endif /* MPCGS_NOGPU */
 
     for (i = 0; i < newtree->nnodes + newtree->ntips; i++) {
         // TODO: find a better way to do this
@@ -837,8 +842,7 @@ struct gene_tree *gtree_create_copy(struct gene_tree *gtree)
     newtree->nodes = newnodes;
     newtree->tips = &newnodes[gtree->nnodes];
 
-    return(newtree);
-
+    return (newtree);
 }
 
 static void gtree_fixup_order(struct gene_tree *gtree, struct gene_node *stopat)
@@ -1173,7 +1177,8 @@ void gtree_summary_set_create(struct gtree_summary_set **sum_set,
     }
 }
 
-static float gtree_summary_calc_lposterior(struct gtree_summary *sum, float theta)
+static float gtree_summary_calc_lposterior(struct gtree_summary *sum,
+                                           float theta)
 {
 
     int i;
@@ -1215,7 +1220,8 @@ void gtree_summary_set_base_lposteriors(struct gtree_summary_set *sum_set,
 
     summary = sum_set->summaries;
     for (i = 0; i < sum_set->nsummaries; i++) {
-        summary->ldrv_posterior = gtree_summary_calc_lposterior(summary, drv_theta);
+        summary->ldrv_posterior =
+          gtree_summary_calc_lposterior(summary, drv_theta);
         summary++;
     }
 }
@@ -1244,7 +1250,8 @@ float gtree_summary_set_llkhood(struct gtree_summary_set *summary_set,
     // calculate posterior for each summary tree
     for (i = 0; i < summary_set->nsummaries; i++) {
         summary->ltmp_lkhood_comp =
-          gtree_summary_calc_lposterior(summary, theta) - summary->ldrv_posterior;
+          gtree_summary_calc_lposterior(summary, theta) -
+          summary->ldrv_posterior;
         if (summary->ltmp_lkhood_comp > normal) {
             normal = summary->ltmp_lkhood_comp;
         }
