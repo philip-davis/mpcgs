@@ -733,7 +733,6 @@ void gtree_set_llhood(struct gene_tree *gtree)
 
 static void gtree_copy(struct gene_tree *gtree, struct gene_tree *newtree)
 {
-
     struct gene_node *newnodes;
     struct gene_node *gnode;
     size_t nodesSz;
@@ -752,14 +751,7 @@ static void gtree_copy(struct gene_tree *gtree, struct gene_tree *newtree)
     }
     memcpy(newnodes, gtree->nodes, nodesSz);
 
-#ifndef MPCGS_NOGPU
-    float *block_scratch;
-    block_scratch = gtree->block_scratch;
-#endif /* MPCGS_NOGPU */
     *newtree = *gtree;
-#ifndef MPCGS_NOGPU
-    newtree->block_scratch = block_scratch;
-#endif /* MPCGS_NOGPU */
 
     for (i = 0; i < newtree->nnodes + newtree->ntips; i++) {
         // TODO: find a better way to do this
@@ -992,7 +984,7 @@ struct gene_tree *gtree_propose(struct gene_tree *current,
     return (proposal);
 }
 
-struct gene_tree *gtree_propose_fixed_target(struct gene_tree *current,
+void gtree_propose_fixed_target(struct gene_tree *current,
                                              struct gene_tree *proposal,
                                              float theta,
                                              unsigned int tgtidx,

@@ -23,6 +23,7 @@
 #include <stdlib.h>
 
 #include "tree.h"
+#include "SFMT.h"
 
 #define EPSILON .0005
 #define MAXITER 1000
@@ -61,6 +62,11 @@ struct multi_proposal
     struct gene_tree *proposals;
     float *trans_mtx;
     unsigned int curr_idx;
+    sfmt_t sfmt;
+#ifndef MPCGS_NOGPU
+    void *gtp_states;
+#endif /* MPCGS_NOGPU */
+
 };
 
 struct chain
@@ -69,17 +75,17 @@ struct chain
     struct chain_param *cparam;
     struct multi_proposal *mp;
     struct gtree_summary_set *sum_set;
+
 };
 
 #ifndef MPCGS_NOGPU
-
 unsigned multi_prop_init_gpu(struct multi_proposal **mp,
                              struct ms_tab *data,
                              unsigned nproposal,
                              float theta,
-                             sfmt_t *sfmt);
+							 unsigned seed);
 
-#endif
+#endif /* MPCGS_NOGPU */
 
 void mpcgs_estimate(struct mpcgs_opt_t *options);
 

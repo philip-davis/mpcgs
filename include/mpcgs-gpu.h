@@ -10,6 +10,7 @@
                   // kernels
 #define WARPSZ 32
 #define MAX_SHARED_SZ 49152
+#define NUM_MTGP_STATES 256
 
 #ifdef __CDT_PARSER__
 #define __global__

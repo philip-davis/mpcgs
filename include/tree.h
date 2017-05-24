@@ -62,6 +62,12 @@ struct gene_node
 #endif /* MPCGS_NOGPU */
 };
 
+struct gnode_list
+{
+    struct gene_node **gnodes;
+    int head;
+    int tail;
+};
 
 struct gene_tree
 {
@@ -81,18 +87,11 @@ struct gene_tree
     size_t block_size;
     size_t num_blocks;
     size_t shared_size;
+    struct gene_node **node_list_scratch;
+    struct float **rand_scratch;
 #endif /* MPCGS_NOGPU */
     float llhood;
 };
-
-
-struct gnode_list
-{
-    struct gene_node **gnodes;
-    int head;
-    int tail;
-};
-
 
 struct gtree_summary
 {
@@ -124,7 +123,7 @@ void gtree_print_newick(struct gene_tree *gtree);
 struct gene_tree *gtree_propose(struct gene_tree *current,
                                 float theta,
                                 sfmt_t *sfmt);
-struct gene_tree *gtree_propose_fixed_target(struct gene_tree *current,
+void gtree_propose_fixed_target(struct gene_tree *current,
                                              struct gene_tree *proposal,
                                              float theta,
                                              unsigned int tgtidx,
@@ -161,6 +160,7 @@ void gtree_summary_set_base_lposteriors_gpu(struct gtree_summary_set *sum_set,
 float gtree_summary_set_llkhood_gpu(struct gtree_summary_set *summary_set,
                                     float theta);
 void gtree_set_llhood_gpu(struct gene_tree *gtree);
+
 #endif /* MPCGS_NOGPU */
 
 #endif /* MPCGS_TREE_H */

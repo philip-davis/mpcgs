@@ -13,6 +13,7 @@ extern "C" {
 #include "phylip.h"
 #include "mpcgs-gpu.h"
 #include "tree.h"
+#include "tree.cuh"
 
 __constant__ float lfreq[MPCGS_NUM_FREQ_TERM];
 
@@ -521,8 +522,99 @@ void gtree_add_seqs_to_tips_gpu(struct gene_tree *gtree, struct ms_tab *mstab)
     /***********************************************************/
 
     //TODO: error checking (for this and other CUDA calls.)
+
+    //These precomputed values are useful for likelihood calculation, and will never change
+    //over the life of the program. Put them in constant memory for speed of access.
     cudaMemcpyToSymbol(lfreq, gtree->lfreq, MPCGS_NUM_FREQ_TERM * sizeof(float));
 
+}
+
+__device__ static void gnode_connect(struct gene_node *child, struct gene_node *parent)
+{
+
+    if (parent) {
+        if (!parent->child1) {
+            parent->child1 = child;
+        } else if (!parent->child2) {
+            parent->child2 = child;
+        }
+    }
+
+    if (child) {
+    	child->parent = parent;
+    }
+}
+
+__device__ static void gnode_disconnect(struct gene_node *gnode)
+{
+
+    struct gene_node *parent;
+
+    if (!gnode) {
+        // TODO: handle error
+    }
+
+    parent = gnode->parent;
+
+    if (parent) {
+        if (parent->child1 == gnode) {
+            parent->child1 = parent->child2;
+            parent->child2 = NULL;
+        } else {
+            parent->child2 = NULL;
+        }
+    }
+
+    gnode->parent = NULL;
+}
+
+__device__ static void gnode_extract(struct gene_node *gnode)
+{
+
+    if (!gnode) {
+        // TODO handle error
+    }
+
+    if (gnode->tree->root == gnode) {
+        gnode->tree->root = gnode->next;
+    }
+
+    if (gnode->tree->last == gnode) {
+        gnode->tree->last = gnode->prev;
+    }
+
+    if (gnode->prev) {
+        gnode->prev->next = gnode->next;
+    }
+    if (gnode->next) {
+        gnode->next->prev = gnode->prev;
+    }
+
+    gnode->prev = NULL;
+    gnode->next = NULL;
+}
+
+__device__ static void gnode_insert_after(struct gene_node *gnode, struct gene_node *prev)
+{
+
+    if (!gnode) {
+        // TODO: handle error
+    }
+
+    gnode->prev = prev;
+    if (prev) {
+        gnode->next = prev->next;
+        prev->next = gnode;
+    } else {
+        gnode->next = gnode->tree->root;
+        gnode->tree->root = gnode;
+    }
+
+    if (gnode->next) {
+        gnode->next->prev = gnode;
+    } else {
+        gnode->tree->last = gnode;
+    }
 }
 
 void gtree_nodes_init_gpu(struct gene_tree *gtree, size_t ntips, size_t seq_len)
@@ -552,6 +644,8 @@ void gtree_nodes_init_gpu(struct gene_tree *gtree, size_t ntips, size_t seq_len)
     gtree->num_blocks = ceil((float)seq_len/(float)gtree->block_size);
 
     cudaMallocManaged(&gtree->block_scratch, gtree->num_blocks * sizeof(float));
+    cudaMalloc((void **)&gtree->node_list_scratch, num_nodes * sizeof(*gtree->node_list_scratch));
+    cudaMalloc((void *)&gtree->rand_scratch, num_nodes * sizeof(*gtree->rand_scratch));
     cudaDeviceSynchronize();
 
 
@@ -575,6 +669,417 @@ void gtree_nodes_init_gpu(struct gene_tree *gtree, size_t ntips, size_t seq_len)
     gtree->tips = &nodes[gtree->nnodes];
     gtree->root = &nodes[0];
 
+}
+
+__device__ static void gtree_copy(struct gene_tree *gtree, struct gene_tree *newtree)
+{
+
+    float *block_scratch;
+    struct gene_node **node_list_scratch;
+    struct gene_node *newnodes;
+    struct gene_node *gnode;
+    size_t nodesSz;
+    int i;
+
+    if (!gtree || !newtree) {
+        // TODO: handle error
+    }
+
+    nodesSz = sizeof(*gtree->nodes) * (gtree->nnodes + gtree->ntips);
+
+    newnodes = newtree->nodes;
+    memcpy(newnodes, gtree->nodes, nodesSz);
+
+    block_scratch = newtree->block_scratch;
+    node_list_scratch = newtree->node_list_scratch;
+    *newtree = *gtree;
+    newtree->block_scratch = block_scratch;
+    newtree->node_list_scratch = node_list_scratch;
+
+    for (i = 0; i < newtree->nnodes + newtree->ntips; i++) {
+        // TODO: find a better way to do this
+        gnode = &newnodes[i];
+        if (gnode->parent) {
+            gnode->parent = &newnodes[gnode->parent - gtree->nodes];
+        }
+        if (gnode->child1) {
+            gnode->child1 = &newnodes[gnode->child1 - gtree->nodes];
+        }
+        if (gnode->child2) {
+            gnode->child2 = &newnodes[gnode->child2 - gtree->nodes];
+        }
+        if (gnode->prev) {
+            gnode->prev = &newnodes[gnode->prev - gtree->nodes];
+        }
+        if (gnode->next) {
+            gnode->next = &newnodes[gnode->next - gtree->nodes];
+        }
+        gnode->tree = newtree;
+        if (gnode->order == 0) {
+            newtree->root = gnode;
+        }
+        if (gnode->order == (newtree->nnodes - 1)) {
+            newtree->last = gnode;
+        }
+    }
+
+    newtree->nodes = newnodes;
+    newtree->tips = &newnodes[gtree->nnodes];
+}
+
+__device__ static void gtree_fixup_order(struct gene_tree *gtree, struct gene_node *stopat)
+{
+
+    struct gene_node *node;
+
+    if (!gtree) {
+        // TODO: handle error
+    }
+
+    gtree->root->order = 0;
+    for (node = gtree->root; node != gtree->last; node = node->next) {
+        if (node == stopat) {
+            break;
+        }
+        node->next->order = node->order + 1;
+    }
+}
+
+__device__ static void gnode_list_init(size_t list_size, struct gnode_list *list)
+{
+
+	list->head = 0;
+    list->tail = 0;
+    cudaMemset(list->gnodes, NULL, list_size * sizeof(*list->gnodes));
+
+}
+
+
+__device__ static void gnode_list_destroy(struct gnode_list *list)
+{
+
+    free(list->gnodes);
+}
+
+__device__ static unsigned int gnode_list_get_size(struct gnode_list *list)
+{
+
+    if (!list) {
+        // TODO: warn
+        return (0);
+    }
+
+    return (list->head - list->tail);
+}
+
+__device__ static void gnode_list_enqueue(struct gnode_list *list, struct gene_node *node)
+{
+
+    if (!list) {
+        // TODO: handle error
+    }
+
+    list->gnodes[list->head++] = node;
+}
+
+__device__ static void gnode_list_collate_head(struct gnode_list *list)
+{
+
+    struct gene_node *collate_target;
+    struct gene_node **target_pos;
+    float parent_time;
+
+    if (!list) {
+        // TODO: handle error
+    }
+
+    if (gnode_list_get_size(list) <= 1) {
+        return;
+    }
+
+    collate_target = list->gnodes[list->head - 1];
+    if (collate_target->parent) {
+        parent_time = collate_target->parent->time;
+    } else {
+        parent_time = FLT_MAX;
+    }
+
+    target_pos = &list->gnodes[list->head - 1];
+    while (target_pos > &list->gnodes[list->tail]) {
+        *target_pos = *(target_pos - 1);
+        if (parent_time > (*target_pos)->parent->time) {
+            break;
+        }
+        target_pos--;
+    }
+
+    *target_pos = collate_target;
+}
+
+__device__ static struct gene_node *gnode_list_dequeue(struct gnode_list *list)
+{
+
+    struct gene_node *node;
+
+    if (!list) {
+        // TODO: handle error
+    }
+
+    if (list->head == list->tail) {
+        return (NULL);
+    }
+
+    node = list->gnodes[list->tail++];
+
+    return (node);
+}
+
+__device__ static struct gene_node *gnode_list_get_tail(struct gnode_list *list)
+{
+
+    if (!list) {
+        // TODO: handle error
+    }
+
+    return (list->gnodes[list->tail]);
+}
+
+__device__ static int gnode_list_empty(struct gnode_list *list)
+{
+
+    if (!list) {
+        // TODO: handle error
+    }
+
+    return (list->head == list->tail);
+}
+
+__device__ static void gnode_set_exp(struct gene_node *gnode, float xrate, float yrate)
+{
+
+    float length, n1, n2;
+    struct gene_node *parent;
+
+    if (!gnode) {
+        // TODO: handle error
+    }
+    if (gnode->parent && !gnode->exp_valid) {
+        parent = gnode->parent;
+        length = parent->time - gnode->time;
+        /********************************************************
+         * The following code adapted from LAMARC, (c) 2002
+         * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
+         * TODO: license ref?
+        ********************************************************/
+        n1 = (length * xrate) / 2.0;
+        n2 = (length * yrate) / 2.0;
+        gnode->lexpA = n1 + log(exp(-n1) - exp(n1));
+        gnode->lexpB = (2.0 * n1) + (length * yrate);
+        gnode->lexpC = (2.0 * n1) + n2 + log(exp(-n2) - exp(n2));
+        /*******************************************************/
+        gnode->exp_valid = 1;
+    }
+    if (gnode->child1) {
+        gnode_set_exp(gnode->child1, xrate, yrate);
+    }
+    if (gnode->child2) {
+        gnode_set_exp(gnode->child2, xrate, yrate);
+    }
+}
+
+
+/*
+static struct gene_node *gnode_list_get_random(struct gnode_list *list,
+                                               sfmt_t *sfmt)
+{
+
+    if (!list || !sfmt) {
+        // TODO: handle error
+    }
+
+    if (gnode_list_get_size(list) == 0) {
+        return (NULL);
+    }
+
+    return (list->gnodes[list->tail + (sfmt_genrand_uint32(sfmt) %
+                                       gnode_list_get_size(list))]);
+}
+
+__device__ static float get_next_coal_time_gpu(unsigned int active,
+                         unsigned int inactive,
+                         unsigned int act_coal,
+                         float theta,
+                         sfmt_t *sfmt)
+{
+
+    float r, time, denom;
+
+
+    if (active < act_coal || inactive < 2 - act_coal) {
+        return (FLT_MAX);
+    }
+
+    do {
+        r = sfmt_genrand_real3(sfmt); // Uniform on interval (0,1)
+    } while (r >= 1.0 || r <= 0.0);
+
+    if (2 == act_coal) {
+        denom = ((float)active * (float)(active - 1)) / 2.0;
+    } else if (1 == act_coal) {
+        denom = (float)active * (float)inactive;
+    } else {
+        // show be caught by param_chk
+        return (FLT_MAX);
+    }
+
+    errno = 0;
+    time = -(log(r) * theta) / (2.0 * denom);
+    if (errno || time == 0.0) {
+        err_warn("Random number generator returned an invalid value.\n");
+    }
+    return (time);
+}
+*/
+
+__device__ void populate_rand_scratch(struct gene_tree *gtree)
+{
+
+	uns
+
+}
+
+__device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
+                                             struct gene_tree *proposal,
+                                             float theta,
+                                             unsigned int tgtidx,
+											 curandStateMtgp32 *mtgp)
+{
+
+    struct gene_node *target, *parent, *gparent, *newgparent, *node, *tail;
+    struct gene_node *child1, *child2, *oldsibling, *sibling, *newnode;
+    struct gene_node *ival_end;
+    struct gnode_list ival_list;
+    float currT, nextT, eventT;
+
+    if (!current) {
+        // TODO: handle error
+    }
+
+    if (tgtidx >= (current->nnodes + current->ntips) ||
+        tgtidx == proposal->root->idx) {
+        // TODO: handle error
+    }
+
+    ival_list.gnodes = proposal->node_list_scratch;
+
+    gnode_list_init((current->nnodes + current->ntips), &ival_list);
+
+    gtree_copy(current, proposal);
+
+    target = &proposal->nodes[tgtidx];
+    if (target >= proposal->root) {
+        target++;
+    }
+    parent = target->parent;
+
+    gnode_disconnect(target);
+    oldsibling = parent->child1;
+
+    if (target->time == 0) {
+        // target is a tip
+        node = proposal->last;
+    } else {
+        node = target->prev;
+    }
+    while (node) {
+        child1 = node->child1;
+        child2 = node->child2;
+        if (child1 && child1->time <= target->time) {
+            gnode_list_enqueue(&ival_list, child1);
+        }
+        if (child2 && child2->time <= target->time) {
+            gnode_list_enqueue(&ival_list, child2);
+        }
+        node = node->prev;
+    }
+
+    /********************************************************
+     * The following code adapted from LAMARC, (c) 2002
+     * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
+     * TODO: license ref?
+     ********************************************************/
+    currT = target->time;
+
+    while (1) {
+        if (gnode_list_empty(&ival_list)) {
+            // TODO: handle error
+        }
+
+        ival_end = (gnode_list_get_tail(&ival_list))->parent;
+        if (ival_end) {
+            nextT = ival_end->time;
+            eventT = get_next_coal_time(
+              1, gnode_list_get_size(&ival_list), 1, theta, sfmt);
+        } else {
+            nextT = FLT_MAX;
+            eventT = get_next_coal_time(2, 0, 2, theta, sfmt);
+        }
+        if ((currT + eventT) < nextT) {
+            sibling = gnode_list_get_random(&ival_list, sfmt);
+            if (sibling == parent) {
+                // Parent is a stick at this point, so it can't be a sibling.
+                sibling = parent->child1;
+            }
+
+            newnode = parent; // for clarity
+            gparent = parent->parent;
+            newgparent = sibling->parent;
+
+            if (parent != ival_end) {
+                gnode_extract(parent);
+                gnode_insert_after(newnode, ival_end);
+            }
+            if (parent != sibling->parent) {
+                gnode_disconnect(oldsibling);
+                gnode_disconnect(parent);
+                gnode_disconnect(sibling);
+                gnode_connect(oldsibling, gparent);
+                gnode_connect(newnode, newgparent);
+                gnode_connect(sibling, newnode);
+            }
+
+            gnode_connect(target, newnode);
+            newnode->time = currT + eventT;
+            newnode->exp_valid = 0;
+            target->exp_valid = 0;
+            sibling->exp_valid = 0;
+
+            gtree_fixup_order(proposal, target);
+            gnode_set_exp(parent, proposal->xrate, proposal->yrate);
+
+            break;
+
+        } else {
+            node = gnode_list_dequeue(&ival_list);
+            if (!gnode_list_empty(&ival_list)) {
+                tail = gnode_list_get_tail(&ival_list);
+                if (tail->parent == node->parent) {
+                    // TODO: some explanation here
+                    gnode_list_dequeue(&ival_list);
+                }
+            }
+            // parent is guaranteed to exist since we would have merged the root
+            // otherwise.
+            gnode_list_enqueue(&ival_list, node->parent);
+            gnode_list_collate_head(&ival_list);
+        }
+
+        currT = nextT;
+    }
+
+    /***********************************************************/
+
+    gnode_list_destroy(&ival_list);
 }
 
 #endif /* MPCGS_NOGPU */

@@ -24,11 +24,6 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#ifndef MPCGS_NOGPU
-#include <curand_kernel.h>
-#include <curand_mtgp32_host.h>
-#endif /* MPCGS_NOGPU */
-
 #include "debug.h"
 #include "mpcgs.h"
 #include "phylip.h"
@@ -138,7 +133,7 @@ static float lkhood_by_gradient_ascent(struct gtree_summary_set *summary_set,
     return (thnext);
 }
 
-static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
+static void do_multi_proposal(struct chain *ch)
 {
 
     struct chain_param *cparam;
@@ -154,7 +149,7 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     float randf;
     int i, j;
 
-    if (!ch || !sfmt) {
+    if (!ch) {
         // TODO: handle error
     }
 
@@ -166,7 +161,7 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     curr_tree = &ch->mp->proposals[ch->mp->curr_idx];
     // TODO: refactor
     tgtidx =
-      sfmt_genrand_uint32(sfmt) % ((curr_tree->nnodes + curr_tree->ntips) - 1);
+      sfmt_genrand_uint32(&(ch->mp->sfmt)) % ((curr_tree->nnodes + curr_tree->ntips) - 1);
     if (tgtidx == curr_tree->root->idx) {
         tgtidx++;
     }
@@ -175,7 +170,7 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     for (i = 0; i < mparam->nproposals; i++) {
         if (i != ch->mp->curr_idx) {
             gtree_propose_fixed_target(
-              curr_tree, proposal, ch->theta, tgtidx, sfmt);
+              curr_tree, proposal, ch->theta, tgtidx, &(ch->mp->sfmt));
 #ifndef MPCGS_NOGPU
             gtree_set_llhood_gpu(proposal);
 #else
@@ -212,7 +207,7 @@ static void do_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     pick = ch->mp->curr_idx;
     for (i = 1; i <= (mparam->npicks * cparam->sum_freq); i++) {
         trans_dist = &ch->mp->trans_mtx[pick * mparam->nproposals];
-        randf = 1.0 - sfmt_genrand_real2(sfmt);
+        randf = 1.0 - sfmt_genrand_real2(&(ch->mp->sfmt));
         pick =
           (unsigned)weighted_pick(trans_dist, mparam->nproposals, 1.0, randf);
         if (mparam->sampling && (i % cparam->sum_freq) == 0) {
@@ -281,7 +276,7 @@ static float run_chain(struct chain *ch, sfmt_t *sfmt)
     return (estimate);
 }
 
-static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
+static float run_chain_with_multi_proposal(struct chain *ch)
 {
 
     struct chain_param *cparam;
@@ -290,7 +285,7 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     float estimate;
     int to_pick;
 
-    if (!ch || !sfmt) {
+    if (!ch) {
         // TODO: handle error
     }
 
@@ -312,7 +307,7 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     }
 
     while (to_pick > 0) {
-        do_multi_proposal(ch, sfmt);
+        do_multi_proposal(ch);
         to_pick -= burnin_param.npicks;
     }
 
@@ -323,7 +318,7 @@ static float run_chain_with_multi_proposal(struct chain *ch, sfmt_t *sfmt)
     }
 
     while (to_pick > 0) {
-        do_multi_proposal(ch, sfmt);
+        do_multi_proposal(ch);
         to_pick -= sampling_param.npicks;
     }
 
@@ -336,12 +331,13 @@ static unsigned multi_prop_init(struct multi_proposal **mp,
                                 struct ms_tab *data,
                                 unsigned nproposal,
                                 float theta,
-                                sfmt_t *sfmt)
+                                unsigned seed)
 {
 
     struct gene_tree *init_tree;
+    sfmt_t *sfmt;
 
-    if (!mp || !data || !sfmt) {
+    if (!mp || !data) {
         // TODO: handle error
     }
 
@@ -351,8 +347,10 @@ static unsigned multi_prop_init(struct multi_proposal **mp,
     (*mp)->trans_mtx =
       malloc(nproposal * nproposal * sizeof(*((*mp)->trans_mtx)));
 
-    init_tree = &(*mp)->proposals[(*mp)->curr_idx];
+    sfmt = &((*mp)->sfmt);
+    sfmt_init_gen_rand(sfmt, seed);
 
+    init_tree = &(*mp)->proposals[(*mp)->curr_idx];
     gtree_init(theta, data->len, init_tree, sfmt);
     gtree_add_seqs_to_tips(init_tree, data);
     gtree_set_exp(init_tree);
@@ -369,7 +367,6 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
 
     struct timeval currtime;
     unsigned long seed;
-    sfmt_t sfmt;
     struct ms_tab *data;
     unsigned num_nodes, nmpproposals;
     struct chain_param small_chain_param, big_chain_param;
@@ -391,7 +388,6 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
         seed = currtime.tv_usec;
     }
     log_debug("rseed = %li\n", seed);
-    sfmt_init_gen_rand(&sfmt, seed);
 
     data = init_ms_tab(options->gdatfile);
 
@@ -405,29 +401,29 @@ void mpcgs_estimate(struct mpcgs_opt_t *options)
     nmpproposals = 100;
 
 #ifdef MPCGS_NOGPU
-    num_nodes = multi_prop_init(&(ch.mp), data, nmpproposals, ch.theta, &sfmt);
+    num_nodes = multi_prop_init(&(ch.mp), data, nmpproposals, ch.theta, seed);
     gtree_summary_set_create(
       &ch.sum_set, big_chain_param.nsummaries, num_nodes);
 #else
-    num_nodes = multi_prop_init_gpu(&(ch.mp), data, nmpproposals, ch.theta, &sfmt);
+    num_nodes = multi_prop_init_gpu(&(ch.mp), data, nmpproposals, ch.theta, seed);
     gtree_summary_set_create_gpu(
       &ch.sum_set, big_chain_param.nsummaries, num_nodes);
 #endif
     for (i = 0; i < 10; i++) {
         // ch.theta = run_chain(&ch, &sfmt);
-        ch.theta = run_chain_with_multi_proposal(&ch, &sfmt);
+        ch.theta = run_chain_with_multi_proposal(&ch);
         printf("Theta estimate after iteration %i: %f\n", (i + 1), ch.theta);
     }
 
     ch.cparam = &big_chain_param;
     for (i = 0; i < 2; i++) {
         // ch.theta = run_chain(&ch, &sfmt);
-        ch.theta = run_chain_with_multi_proposal(&ch, &sfmt);
+        ch.theta = run_chain_with_multi_proposal(&ch);
         printf(
           "Theta estimate after long iteration %i: %f\n", (i + 1), ch.theta);
     }
 
-    // TODO: free tree
+    // TODO: free memory
 
     free_ms_tab(data);
 
