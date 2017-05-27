@@ -88,7 +88,7 @@ struct gene_tree
     size_t num_blocks;
     size_t shared_size;
     struct gene_node **node_list_scratch;
-    struct float **rand_scratch;
+    float *rand_scratch;
 #endif /* MPCGS_NOGPU */
     float llhood;
 };

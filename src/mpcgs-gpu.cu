@@ -4,7 +4,9 @@
 #ifndef MPCGS_NOGPU
 
 #include <cuda.h>
-#include <curand_kernel.h>
+
+#include "tree.cuh"
+
 #include <curand_mtgp32_host.h>
 
 extern "C" {
@@ -14,7 +16,6 @@ extern "C" {
 #include "tree.h"
 #include "debug.h"
 #include "mpcgs-gpu.h"
-#include "tree.cuh"
 
 #include<stdlib.h>
 #include<sys/time.h>
@@ -42,31 +43,78 @@ static void *init_prng_gpu(unsigned seed)
 
 }
 
-__global__ void propose_multiple(struct multi_proposal *mp, float theta, struct gene_tree *curr_tree, unsigned tgt_idx, unsigned num_seq)
+__global__ void propose_multiple(struct multi_proposal *mp, float theta, struct gene_tree *curr_tree, unsigned tgt_idx, unsigned num_prop, unsigned num_seq, unsigned seq_len)
 {
 
 	unsigned prop_idx;
 	struct gene_tree *proposal;
 	extern __shared__ float prop_llhoods[];
+	unsigned num_blocks, block_size, shared_size;
+	cudaStream_t cstream;
+	float trans_mtx_val, trans_mtx_sum;
+	float *trans_dist;
+	float llhood, other_llhood;
+	int i;
 
 	prop_idx = threadIdx.x;
 
+	proposal = &(mp->proposals[prop_idx]);
+	// pre-prepare the most random floats the proposal mechanism could need. All threads must
+	// run this simultaneously, so do this even for the generator thread.
+	fill_rand_array(proposal->rand_scratch, (2 * num_seq), (curandStateMtgp32 *)mp->gtp_states);
+
 	if(prop_idx != mp->curr_idx) {
-		proposal = &(mp->proposals[prop_idx]);
+		gtree_propose_fixed_target_gpu(curr_tree, proposal, theta, tgt_idx);
 	}
+
+	__syncthreads();
+
+	block_size = curr_tree->block_size;
+	num_blocks = curr_tree->num_blocks;
+	shared_size = curr_tree->shared_size;
+	cudaStreamCreateWithFlags(&cstream, cudaStreamNonBlocking);
+	gtree_compute_llhood<<<num_blocks, block_size, shared_size, cstream>>>
+				(proposal, num_seq, seq_len);
+
+	cudaDeviceSynchronize();
+
+	llhood = 0;
+	for(i = 0; i < num_blocks; i++) {
+		llhood += proposal->block_scratch[i];
+	}
+	prop_llhoods[prop_idx] = llhood;
+	__syncthreads();
+
+	trans_dist = &mp->trans_mtx[prop_idx * num_prop];
+	trans_mtx_sum = 0.0;
+	for(i = 0; i < num_prop; i++) {
+		if(i != prop_idx) {
+			other_llhood = prop_llhoods[i];
+			if(other_llhood >= llhood) {
+				trans_mtx_val = 1.0;
+			} else {
+				trans_mtx_val = expf(other_llhood - llhood);
+			}
+			trans_mtx_val /= (float)(num_prop - 1);
+			trans_mtx_sum += trans_mtx_val;
+			trans_dist[i] = trans_mtx_val;
+		}
+	}
+	trans_dist[prop_idx] = 1.0 - trans_mtx_sum;
 
 }
 
-static void do_multi_proposal_gpu(struct chain *ch)
+void do_multi_proposal_gpu(struct chain *ch)
 {
 
 	struct chain_param *cparam;
 	struct mp_param *mparam;
 	struct gene_tree *curr_tree;
 	struct gtree_summary *summary;
-	struct gtree_summary_set *sum_set;
-	unsigned tgt_idx;
+	unsigned tgt_idx, pick;
 	size_t num_blocks, block_size, shared_size;
+	float *trans_dist;
+	float randf;
 	int i;
 
 	if (!ch) {
@@ -90,7 +138,23 @@ static void do_multi_proposal_gpu(struct chain *ch)
 	}
 	shared_size = block_size * sizeof(float);
 
-	propose_multiple<<<num_blocks, block_size, shared_size>>> (ch->mp, ch->theta, curr_tree, tgt_idx, curr_tree->ntips);
+	propose_multiple<<<num_blocks, block_size, shared_size>>> (ch->mp, ch->theta, curr_tree, tgt_idx, mparam->nproposals, curr_tree->ntips, curr_tree->mstab->seq_len);
+
+	pick = ch->mp->curr_idx;
+	for (i = 1; i <= (mparam->npicks * cparam->sum_freq); i++) {
+		trans_dist = &ch->mp->trans_mtx[pick * mparam->nproposals];
+		randf = 1.0 - sfmt_genrand_real2(&(ch->mp->sfmt));
+		pick =
+				(unsigned)weighted_pick(trans_dist, mparam->nproposals, 1.0, randf);
+		if (mparam->sampling && (i % cparam->sum_freq) == 0) {
+			gtree_digest(&ch->mp->proposals[pick], summary);
+			ch->sum_set->nsummaries++;
+			summary++;
+			//printf("proposal->llhood = %f\n", ch->mp->proposals[pick].llhood);
+		}
+	}
+
+	ch->mp->curr_idx = pick;
 
 
 }

@@ -84,6 +84,7 @@ unsigned multi_prop_init_gpu(struct multi_proposal **mp,
                              unsigned nproposal,
                              float theta,
 							 unsigned seed);
+void do_multi_proposal_gpu(struct chain *ch);
 
 #endif /* MPCGS_NOGPU */
 

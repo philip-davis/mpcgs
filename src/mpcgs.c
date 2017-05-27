@@ -142,7 +142,6 @@ static void do_multi_proposal(struct chain *ch)
     struct gtree_summary *summary;
     struct gtree_summary_set *sum_set;
     unsigned int tgtidx, pick;
-    float llhood_sum;
     int trans_mtx_pos;
     float trans_mtx_val, trans_mtx_sum;
     float *trans_dist;
@@ -166,7 +165,6 @@ static void do_multi_proposal(struct chain *ch)
         tgtidx++;
     }
     proposal = ch->mp->proposals;
-    llhood_sum = 0;
     for (i = 0; i < mparam->nproposals; i++) {
         if (i != ch->mp->curr_idx) {
             gtree_propose_fixed_target(
@@ -176,7 +174,6 @@ static void do_multi_proposal(struct chain *ch)
 #else
             gtree_set_llhood(proposal);
 #endif /* MPCGS_NOGPU */
-            llhood_sum += proposal->llhood;
         }
 
         proposal++;
@@ -307,7 +304,8 @@ static float run_chain_with_multi_proposal(struct chain *ch)
     }
 
     while (to_pick > 0) {
-        do_multi_proposal(ch);
+        //do_multi_proposal(ch);
+    	do_multi_proposal_gpu(ch);
         to_pick -= burnin_param.npicks;
     }
 
@@ -318,7 +316,8 @@ static float run_chain_with_multi_proposal(struct chain *ch)
     }
 
     while (to_pick > 0) {
-        do_multi_proposal(ch);
+        //do_multi_proposal(ch);
+    	do_multi_proposal_gpu(ch);
         to_pick -= sampling_param.npicks;
     }
 

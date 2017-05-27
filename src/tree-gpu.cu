@@ -1,3 +1,4 @@
+#include "tree.cuh"
 
 extern "C" {
 
@@ -13,7 +14,6 @@ extern "C" {
 #include "phylip.h"
 #include "mpcgs-gpu.h"
 #include "tree.h"
-#include "tree.cuh"
 
 __constant__ float lfreq[MPCGS_NUM_FREQ_TERM];
 
@@ -645,7 +645,7 @@ void gtree_nodes_init_gpu(struct gene_tree *gtree, size_t ntips, size_t seq_len)
 
     cudaMallocManaged(&gtree->block_scratch, gtree->num_blocks * sizeof(float));
     cudaMalloc((void **)&gtree->node_list_scratch, num_nodes * sizeof(*gtree->node_list_scratch));
-    cudaMalloc((void *)&gtree->rand_scratch, num_nodes * sizeof(*gtree->rand_scratch));
+    cudaMalloc((void **)&gtree->rand_scratch, (num_nodes + 1) * sizeof(*gtree->rand_scratch));
     cudaDeviceSynchronize();
 
 
@@ -748,9 +748,14 @@ __device__ static void gtree_fixup_order(struct gene_tree *gtree, struct gene_no
 __device__ static void gnode_list_init(size_t list_size, struct gnode_list *list)
 {
 
+	int i;
+
 	list->head = 0;
     list->tail = 0;
-    cudaMemset(list->gnodes, NULL, list_size * sizeof(*list->gnodes));
+
+    for(i = 0; i < list_size; i++) {
+    	list->gnodes[i] = NULL;
+    }
 
 }
 
@@ -854,46 +859,50 @@ __device__ static int gnode_list_empty(struct gnode_list *list)
     return (list->head == list->tail);
 }
 
-__device__ static void gnode_set_exp(struct gene_node *gnode, float xrate, float yrate)
+__device__ static void gnode_set_exp_gpu(struct gene_node *gnode, float xrate, float yrate, unsigned set_children)
 {
 
-    float length, n1, n2;
-    struct gene_node *parent;
+	struct gene_node *parent;
+	float length, n1, n2;
 
-    if (!gnode) {
-        // TODO: handle error
-    }
-    if (gnode->parent && !gnode->exp_valid) {
-        parent = gnode->parent;
-        length = parent->time - gnode->time;
-        /********************************************************
-         * The following code adapted from LAMARC, (c) 2002
-         * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
-         * TODO: license ref?
-        ********************************************************/
-        n1 = (length * xrate) / 2.0;
-        n2 = (length * yrate) / 2.0;
-        gnode->lexpA = n1 + log(exp(-n1) - exp(n1));
-        gnode->lexpB = (2.0 * n1) + (length * yrate);
-        gnode->lexpC = (2.0 * n1) + n2 + log(exp(-n2) - exp(n2));
-        /*******************************************************/
-        gnode->exp_valid = 1;
-    }
-    if (gnode->child1) {
-        gnode_set_exp(gnode->child1, xrate, yrate);
-    }
-    if (gnode->child2) {
-        gnode_set_exp(gnode->child2, xrate, yrate);
-    }
+	if (!gnode) {
+		// TODO: handle error
+	}
+
+	parent = gnode->parent;
+	if (parent && !gnode->exp_valid) {
+		length = parent->time - gnode->time;
+		/********************************************************
+		 * The following code adapted from LAMARC, (c) 2002
+		 * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
+		 * TODO: license ref?
+		 ********************************************************/
+		n1 = (length * xrate) / 2.0;
+		n2 = (length * yrate) / 2.0;
+		gnode->lexpA = n1 + log(exp(-n1) - exp(n1));
+		gnode->lexpB = (2.0 * n1) + (length * yrate);
+		gnode->lexpC = (2.0 * n1) + n2 + log(exp(-n2) - exp(n2));
+		/*******************************************************/
+		gnode->exp_valid = 1;
+	}
+	if(set_children) {
+		if (gnode->child1) {
+			gnode_set_exp_gpu(gnode->child1, xrate, yrate, 0);
+		}
+		if (gnode->child2) {
+			gnode_set_exp_gpu(gnode->child2, xrate, yrate, 0);
+		}
+	}
+
 }
 
-
-/*
-static struct gene_node *gnode_list_get_random(struct gnode_list *list,
-                                               sfmt_t *sfmt)
+__device__ static struct gene_node *gnode_list_get_random_gpu (struct gnode_list *list,
+                                               float rand_float)
 {
 
-    if (!list || !sfmt) {
+	unsigned list_pos, list_size;
+
+    if (!list) {
         // TODO: handle error
     }
 
@@ -901,15 +910,20 @@ static struct gene_node *gnode_list_get_random(struct gnode_list *list,
         return (NULL);
     }
 
-    return (list->gnodes[list->tail + (sfmt_genrand_uint32(sfmt) %
-                                       gnode_list_get_size(list))]);
+    list_size = gnode_list_get_size(list);
+    list_pos = rand_float * list_size;
+    if(list_pos >= list_size) {
+    	list_pos = list_size - 1;
+    }
+
+    return (list->gnodes[list_pos]);
 }
 
 __device__ static float get_next_coal_time_gpu(unsigned int active,
                          unsigned int inactive,
                          unsigned int act_coal,
                          float theta,
-                         sfmt_t *sfmt)
+                         float rand_float)
 {
 
     float r, time, denom;
@@ -919,40 +933,39 @@ __device__ static float get_next_coal_time_gpu(unsigned int active,
         return (FLT_MAX);
     }
 
-    do {
-        r = sfmt_genrand_real3(sfmt); // Uniform on interval (0,1)
-    } while (r >= 1.0 || r <= 0.0);
+    r = rand_float;
 
     if (2 == act_coal) {
         denom = ((float)active * (float)(active - 1)) / 2.0;
     } else if (1 == act_coal) {
         denom = (float)active * (float)inactive;
     } else {
-        // show be caught by param_chk
         return (FLT_MAX);
     }
 
-    errno = 0;
     time = -(log(r) * theta) / (2.0 * denom);
-    if (errno || time == 0.0) {
-        err_warn("Random number generator returned an invalid value.\n");
-    }
+
     return (time);
 }
-*/
 
-__device__ void populate_rand_scratch(struct gene_tree *gtree)
+__device__ void fill_rand_array(float *rand_array, unsigned count, curandStateMtgp32 *mtgp)
 {
 
-	uns
+	int i;
+
+	for(i = 0; i < count; i++) {
+		rand_array[i] = curand_uniform(mtgp);
+		if(rand_array[i] == 0) {
+			rand_array[i] = FLT_MIN;
+		}
+	}
 
 }
 
 __device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
                                              struct gene_tree *proposal,
                                              float theta,
-                                             unsigned int tgtidx,
-											 curandStateMtgp32 *mtgp)
+                                             unsigned int tgtidx)
 {
 
     struct gene_node *target, *parent, *gparent, *newgparent, *node, *tail;
@@ -960,6 +973,8 @@ __device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
     struct gene_node *ival_end;
     struct gnode_list ival_list;
     float currT, nextT, eventT;
+    float *rand_scratch;
+    float rand_float;
 
     if (!current) {
         // TODO: handle error
@@ -1003,6 +1018,8 @@ __device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
         node = node->prev;
     }
 
+    rand_scratch = proposal->rand_scratch;
+
     /********************************************************
      * The following code adapted from LAMARC, (c) 2002
      * Peter Beerli, Mary Kuhner, Jon  Yamato and Joseph Felsenstein
@@ -1016,16 +1033,21 @@ __device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
         }
 
         ival_end = (gnode_list_get_tail(&ival_list))->parent;
+        rand_float = *rand_scratch;
+        rand_scratch++;
         if (ival_end) {
             nextT = ival_end->time;
-            eventT = get_next_coal_time(
-              1, gnode_list_get_size(&ival_list), 1, theta, sfmt);
+            eventT = get_next_coal_time_gpu(
+              1, gnode_list_get_size(&ival_list), 1, theta, rand_float);
         } else {
             nextT = FLT_MAX;
-            eventT = get_next_coal_time(2, 0, 2, theta, sfmt);
+            eventT = get_next_coal_time_gpu(2, 0, 2, theta, rand_float);
         }
         if ((currT + eventT) < nextT) {
-            sibling = gnode_list_get_random(&ival_list, sfmt);
+
+        	rand_float = *rand_scratch;
+        	rand_scratch++;
+            sibling = gnode_list_get_random_gpu(&ival_list, rand_float);
             if (sibling == parent) {
                 // Parent is a stick at this point, so it can't be a sibling.
                 sibling = parent->child1;
@@ -1055,7 +1077,7 @@ __device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
             sibling->exp_valid = 0;
 
             gtree_fixup_order(proposal, target);
-            gnode_set_exp(parent, proposal->xrate, proposal->yrate);
+            gnode_set_exp_gpu(newnode, proposal->xrate, proposal->yrate, 1);
 
             break;
 
@@ -1080,6 +1102,7 @@ __device__ void gtree_propose_fixed_target_gpu(struct gene_tree *current,
     /***********************************************************/
 
     gnode_list_destroy(&ival_list);
+
 }
 
 #endif /* MPCGS_NOGPU */
