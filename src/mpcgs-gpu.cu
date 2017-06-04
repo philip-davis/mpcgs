@@ -139,6 +139,7 @@ void do_multi_proposal_gpu(struct chain *ch)
 	shared_size = block_size * sizeof(float);
 
 	propose_multiple<<<num_blocks, block_size, shared_size>>> (ch->mp, ch->theta, curr_tree, tgt_idx, mparam->nproposals, curr_tree->ntips, curr_tree->mstab->seq_len);
+	cudaDeviceSynchronize();
 
 	pick = ch->mp->curr_idx;
 	for (i = 1; i <= (mparam->npicks * cparam->sum_freq); i++) {
@@ -174,8 +175,8 @@ unsigned multi_prop_init_gpu(struct multi_proposal **mp,
 		// TODO: handle error
 	}
 
-	*mp = (multi_proposal *)malloc(sizeof(**mp));
-	cudaMallocManaged(mp, sizeof(*mp));
+	//*mp = (multi_proposal *)malloc(sizeof(**mp));
+	cudaMallocManaged(mp, sizeof(**mp));
 
 	cudaMallocManaged(
 			&(*mp)->proposals, nproposal * sizeof(*((*mp)->proposals)));

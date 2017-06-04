@@ -305,6 +305,7 @@ static float run_chain_with_multi_proposal(struct chain *ch)
 
     while (to_pick > 0) {
         //do_multi_proposal(ch);
+    	printf("to_pick = %i", to_pick); //
     	do_multi_proposal_gpu(ch);
         to_pick -= burnin_param.npicks;
     }
